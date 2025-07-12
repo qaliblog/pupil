@@ -794,7 +794,11 @@ override fun onDraw(canvas: Canvas) {
                 
                 
                 
-                // Apply moveX and moveY with distance adjustment for sensitivity
+                moveYChange += yDiff * (1.2f - pscp * 20f) + headDirectionScaleY * 0.5f
+
+
+
+                              // Apply moveX and moveY with distance adjustment for sensitivity
                 val adjustedMoveX = moveX * (sensitivityScale * distanceEffectMoveX * distanceScalingFactor)
                 //Apply gyroscope scaling based on the gyro velocity magnitude
                 gyroScaleX = 1f + (abs(gyroVelocityX) / 2f)
@@ -813,9 +817,13 @@ override fun onDraw(canvas: Canvas) {
                     adjustedMoveY = -moveY * (sensitivityScale * distanceEffectMoveY * distanceScalingFactor)
                 }
 
-                //Apply gyro to position
+              //Apply gyro to position
                 var targetX = (width / 2f) + (moveXChange * adjustedMoveX) + staticX + (-gyroScaleXChange * 200f)
-                var targetY = (height/ 2f) + (moveYChange * adjustedMoveY) + staticY + (-gyroScaleYChange*200f)
+                if (moveYChange >= 0){
+                     targetY = ((height / 2f) - (moveYChange * adjustedMoveY)  + staticY  + (-gyroScaleYChange * 200f))
+                }else{
+                     targetY = ((height / 2f) -  (moveYChange * adjustedMoveY)  + staticY  + (-gyroScaleYChange * 200f))
+                }
 
 
                 // Damping factor (you can adjust this)
