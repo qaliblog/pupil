@@ -120,19 +120,11 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         val inputImageWidth = resultBundle.inputImageWidth.toFloat()
         val inputImageHeight = resultBundle.inputImageHeight.toFloat()
 
-        // Calculate scale factors with width correction
-        val scaleX = overlayWidth / inputImageWidth * 2f
+        val scaleX = overlayWidth / inputImageWidth
         val scaleY = overlayHeight / inputImageHeight
 
-        // Calculate the center offset (overlay width - scaled input width) / 2
-        val scaledWidth = inputImageWidth * scaleX
-        val offsetX = (scaledWidth - overlayWidth) / 2f
-
-        // Adjust landmarks
         val adjustedLandmarks = landmarks.map { landmark ->
-            val x = (landmark.x() * inputImageWidth * scaleX) - offsetX
-            val y = landmark.y() * inputImageHeight * scaleY
-            Pair(x, y)
+            Pair(landmark.x() * scaleX, landmark.y() * scaleY)
         }
 
         // Update the overlay view with the adjusted landmarks

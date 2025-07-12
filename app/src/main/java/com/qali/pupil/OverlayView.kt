@@ -794,157 +794,7 @@ override fun onDraw(canvas: Canvas) {
                 
                 
                 
-                 // 4. Add the difference to moveYChange
-                yDiffChange += yDiff
-                pscpChange += pscp
-                
-                
-                if (yDiff>= 450){
-                    if(pscp>= 0.01){
-                        if(headDirectionScaleY-30>=0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, top distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, top distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.008){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, mid distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, mid distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.007){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // top section, close distance, head direction up
-                        }
-                    }
-                    
-                    else{
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/500))) // top section, super close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/200))) // top section, super close distance, head direction up
-                        }                        }
-                }
-                
-                
-                else if (yDiff>= 0){
-                    if(pscp>= 0.01){
-                        if(headDirectionScaleY-30>=0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, top distance, head direction down
-                                                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, top distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.008){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, mid distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, mid distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.007){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000))) // mid section, close distance, head direction up
-                        }
-                    }
-                    
-                    else{
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000)))  // mid section, super close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.37f-pscp*16.5f + ((headDirectionScaleY -30)/1000)))  // mid section, super close distance, head direction up
-                        }                 
-                    }
-                }
-                
-                
-                
-                
-                else if (yDiff>= -450){
-                    if(pscp>= 0.01){
-                        if(headDirectionScaleY-30>=0){
-                            moveYChange += (yDiff* (1.15f-pscp*28.5f + ((headDirectionScaleY -30)/1000))) // bottom section, top distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.15f-pscp*28.5f + (-3 *(headDirectionScaleY -30)/1000))) // bottom section, top distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.008){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.11f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, mid distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.11f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, mid distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.007){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.06f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.06f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, close distance, head direction up
-                        }           
-                    }
-                    
-                    else{
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.07f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, super close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.07f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // bottom section, super close distance, head direction up
-                        }
-                    }
-                }
-                
-                else{
-                    if(pscp>= 0.01){
-                        if(headDirectionScaleY-30>=0){
-                            moveYChange += (yDiff* (1.18f-pscp*28.5f + (0.4f *(headDirectionScaleY -30)/1000))) // Super bottom section, top distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.15f-pscp*28.5f + (-3 *(headDirectionScaleY -30)/1000))) // Super bottom section, top distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.008){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.11f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, mid distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.11f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, mid distance, head direction up
-                        }
-                    }
-                    
-                    else if(pscp>= 0.007){
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.06f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.06f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, close distance, head direction up
-                        }        
-                    }
-                    
-                    else{
-                        if(headDirectionScaleY-35>0){
-                            moveYChange += (yDiff* (1.07f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, super close distance, head direction down
-                        }else{
-                            moveYChange += (yDiff* (1.07f-pscp*28.5f + ((headDirectionScaleY -35)/1000))) // Super bottom section, super close distance, head direction up
-                        }                    
-                    }
-                }
-                
-                moveYChange = moveYChange + pscp*100
-                val moveYChangeText = "moveYChange: ${String.format("%.4f", moveYChange)}"
-                canvas.drawText(moveYChangeText, 10f, 40f, textPaint)
-                
-                 
-
-                              // Apply moveX and moveY with distance adjustment for sensitivity
+                // Apply moveX and moveY with distance adjustment for sensitivity
                 val adjustedMoveX = moveX * (sensitivityScale * distanceEffectMoveX * distanceScalingFactor)
                 //Apply gyroscope scaling based on the gyro velocity magnitude
                 gyroScaleX = 1f + (abs(gyroVelocityX) / 2f)
@@ -963,13 +813,9 @@ override fun onDraw(canvas: Canvas) {
                     adjustedMoveY = -moveY * (sensitivityScale * distanceEffectMoveY * distanceScalingFactor)
                 }
 
-              //Apply gyro to position
+                //Apply gyro to position
                 var targetX = (width / 2f) + (moveXChange * adjustedMoveX) + staticX + (-gyroScaleXChange * 200f)
-                if (moveYChange >= 0){
-                     targetY = ((height / 2f) - (moveYChange * adjustedMoveY)  + staticY  + (-gyroScaleYChange * 200f))
-                }else{
-                     targetY = ((height / 2f) -  (moveYChange * adjustedMoveY)  + staticY  + (-gyroScaleYChange * 200f))
-                }
+                var targetY = (height/ 2f) + (moveYChange * adjustedMoveY) + staticY + (-gyroScaleYChange*200f)
 
 
                 // Damping factor (you can adjust this)
