@@ -49,25 +49,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var sphereBottomStretchMultiplier = 1.0f
     var sphereOuterStretchMultiplier = 1.0f
     
-    // Eye Position and Gaze Line Adjustment System
-    var eyeAdjustmentEnabled = true
     
-    // Position Adjustments (affects where eyes are positioned)
-    var headDirectionPositionInfluence = 0.2f  // How much head direction affects eye position
-    var screenPositionInfluence = 0.1f  // How much screen position affects eye position
-    var gazeDirectionInfluence = 0.15f  // How much gaze direction affects eye position
-    
-    // Size Adjustments (affects eye sphere size)
-    var distanceSizeInfluence = 0.3f  // How much distance affects eye size
-    var headTiltSizeInfluence = 0.1f  // How much head tilt affects eye size
-    var screenSizeInfluence = 0.05f  // How much screen position affects eye size
-    
-    // Gaze Line Curvature (affects gaze line direction)
-    var gazeCurvatureDownward = 0.3f  // How much to curve gaze lines downward
-    var gazeCurvatureStrength = 0.5f  // Strength of the curvature effect
-    
-    private var screenHeight = 0f
-    private var screenWidth = 0f
     
     // FPS Display
     var currentFPS = 0
@@ -191,28 +173,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
-    fun updateEyeAdjustment(
-        enabled: Boolean? = null,
-        headDirectionPosition: Float? = null,
-        screenPosition: Float? = null,
-        gazeDirection: Float? = null,
-        distanceSize: Float? = null,
-        headTiltSize: Float? = null,
-        screenSize: Float? = null,
-        gazeCurvatureDownward: Float? = null,
-        gazeCurvatureStrength: Float? = null
-    ) {
-        enabled?.let { eyeAdjustmentEnabled = it }
-        headDirectionPosition?.let { headDirectionPositionInfluence = it }
-        screenPosition?.let { screenPositionInfluence = it }
-        gazeDirection?.let { gazeDirectionInfluence = it }
-        distanceSize?.let { distanceSizeInfluence = it }
-        headTiltSize?.let { headTiltSizeInfluence = it }
-        screenSize?.let { screenSizeInfluence = it }
-        gazeCurvatureDownward?.let { this.gazeCurvatureDownward = it }
-        gazeCurvatureStrength?.let { this.gazeCurvatureStrength = it }
-        invalidate()
-    }
 
 
     // --- Gyroscope Sensor Handling ---
@@ -266,110 +226,20 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     private fun calculateEyeSphere(eyePoints: List<Pair<Float, Float>>, xOffset: Float, yOffset: Float, zOffset: Float, headDirectionX: Float = 0f, headDirectionY: Float = 0f, isRightEye: Boolean = true): EyeSphere {
         if (eyePoints.isEmpty()) return EyeSphere(0f, 0f, 0f)
-        
-        // Base calculations
+
         val adjustedPoints = eyePoints.map { adjustPosition(it, xOffset, yOffset, zOffset) }
-        val baseCenterX = adjustedPoints.map { it.first }.average().toFloat()
-        val baseCenterY = adjustedPoints.map { it.second }.average().toFloat()
-        val baseRadius = adjustedPoints.map { point -> sqrt((point.first - baseCenterX).pow(2) + (point.second - baseCenterY).pow(2)) }.average().toFloat()
-        
-        if (!eyeAdjustmentEnabled) {
-            return EyeSphere(baseCenterX, baseCenterY, baseRadius, baseRadius * 2f, 1f + (zOffset / 1000f))
-        }
-        
-        // === POSITION ADJUSTMENTS ===
-        // These affect WHERE the eye is positioned, not its size or shape
-        
-        var positionX = baseCenterX
-        var positionY = baseCenterY
-        
-        // 1. Head Direction Position Influence
-        val headDirectionMagnitude = sqrt(headDirectionX * headDirectionX + headDirectionY * headDirectionY)
-        if (headDirectionMagnitude > 0.1f) {
-            val normalizedHeadX = headDirectionX / headDirectionMagnitude
-            val normalizedHeadY = headDirectionY / headDirectionMagnitude
-            
-            // Move eyes in opposite direction of head movement for compensation
-            val headCompensationX = -normalizedHeadX * headDirectionPositionInfluence * headDirectionMagnitude * baseRadius
-            val headCompensationY = -normalizedHeadY * headDirectionPositionInfluence * headDirectionMagnitude * baseRadius
-            
-            positionX += headCompensationX
-            positionY += headCompensationY
-        }
-        
-        // 2. Screen Position Influence (based on distance from center)
-        if (screenHeight > 0 && screenWidth > 0) {
-            val screenCenterX = screenWidth / 2f
-            val screenCenterY = screenHeight / 2f
-            
-            val distanceFromCenterX = (baseCenterX - screenCenterX) / screenWidth
-            val distanceFromCenterY = (baseCenterY - screenCenterY) / screenHeight
-            
-            // Adjust position based on distance from screen center
-            val screenAdjustmentX = distanceFromCenterX * screenPositionInfluence * baseRadius
-            val screenAdjustmentY = distanceFromCenterY * screenPositionInfluence * baseRadius
-            
-            positionX += screenAdjustmentX
-            positionY += screenAdjustmentY
-        }
-        
-        // 3. Gaze Direction Influence (if we have gaze data)
-        // This would be implemented when we have gaze tracking data
-        
-        // === SIZE ADJUSTMENTS ===
-        // These affect the SIZE of the eye sphere
-        
-        var sizeMultiplier = 1f
-        
-        // 1. Distance Size Influence
-        val distanceFactor = 1f + (zOffset / 1000f)  // Closer = smaller, farther = larger
-        sizeMultiplier *= (1f + (distanceFactor - 1f) * distanceSizeInfluence)
-        
-        // 2. Head Tilt Size Influence
-        if (headDirectionMagnitude > 0.1f) {
-            val headTiltFactor = abs(headDirectionY) / headDirectionMagnitude  // 0 to 1
-            sizeMultiplier *= (1f + headTiltFactor * headTiltSizeInfluence)
-        }
-        
-        // 3. Screen Size Influence
-        if (screenHeight > 0) {
-            val screenPositionFactor = baseCenterY / screenHeight  // 0 to 1
-            sizeMultiplier *= (1f + screenPositionFactor * screenSizeInfluence)
-        }
-        
-        val adjustedRadius = baseRadius * sizeMultiplier
-        
-        // Return eye sphere with standard circular shape (no stretching)
-        return EyeSphere(
-            positionX, 
-            positionY, 
-            adjustedRadius, 
-            adjustedRadius * 2f,  // Standard width
-            adjustedRadius * 2f   // Standard height
-        )
+        val centerX = adjustedPoints.map { it.first }.average().toFloat()
+        val centerY = adjustedPoints.map { it.second }.average().toFloat()
+        val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
+
+        return EyeSphere(centerX, centerY, radius, radius * 2f, 1f + (zOffset / 1000f))
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
         val directionX = pupilPoint.first - sphereCenter.first
         val directionY = pupilPoint.second - sphereCenter.second
-        
-        // Apply downward curvature to the gaze line
-        val curvatureEffect = if (eyeAdjustmentEnabled) {
-            // Calculate how much to curve downward based on the line length and curvature settings
-            val lineLength = sqrt(directionX * directionX + directionY * directionY)
-            val curvatureAmount = lineLength * gazeCurvatureDownward * gazeCurvatureStrength
-            curvatureAmount
-        } else {
-            0f
-        }
-        
-        // Apply the curvature by adding downward component
-        val curvedDirectionX = directionX
-        val curvedDirectionY = directionY + curvatureEffect
-        
-        val endX = pupilPoint.first + curvedDirectionX * extensionFactor
-        val endY = pupilPoint.second + curvedDirectionY * extensionFactor
-        
+        val endX = pupilPoint.first + directionX * extensionFactor
+        val endY = pupilPoint.second + directionY * extensionFactor
         return GazeLine(sphereCenter.first, sphereCenter.second, endX, endY)
     }
     
@@ -426,9 +296,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Capture screen dimensions for screen size effect
-        screenWidth = width.toFloat()
-        screenHeight = height.toFloat()
 
         if (landmarks.isEmpty()) return
 
@@ -603,15 +470,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val fpsText = "FPS: $currentFPS"
-        val adjustmentText = "Eye Adj: ${if (eyeAdjustmentEnabled) "ON" else "OFF"}"
-        val positionText = "Pos: H${"%.2f".format(headDirectionPositionInfluence)} S${"%.2f".format(screenPositionInfluence)}"
-        val sizeText = "Size: D${"%.2f".format(distanceSizeInfluence)} T${"%.2f".format(headTiltSizeInfluence)}"
-        val gazeText = "Gaze: Down${"%.2f".format(gazeCurvatureDownward)} Str${"%.2f".format(gazeCurvatureStrength)}"
-        
         canvas.drawText(fpsText, 20f, 170f, textPaint)
-        canvas.drawText(adjustmentText, 20f, 210f, textPaint)
-        canvas.drawText(positionText, 20f, 250f, textPaint)
-        canvas.drawText(sizeText, 20f, 290f, textPaint)
-        canvas.drawText(gazeText, 20f, 330f, textPaint)
     }
 }
