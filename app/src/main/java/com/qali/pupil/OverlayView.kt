@@ -59,6 +59,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var gazeCurvatureEnabled = true
     var gazeCurvatureDownward = 0.3f    // How much to curve gaze lines downward
     var gazeCurvatureStrength = 0.5f    // Strength of the curvature effect
+    
+    // Eye Position Adjustment for Better Gaze Lines
+    var eyePositionAdjustmentEnabled = true
+    var eyePositionDownward = 0.2f      // Move eye position down relative to landmarks
+    var eyePositionOutward = 0.1f       // Move eye position outward (left/right)
 
     // Gyroscope
     private var gyroVelocityX = 0.0f
@@ -190,6 +195,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
+    fun updateEyePosition(
+        enabled: Boolean? = null,
+        downward: Float? = null,
+        outward: Float? = null
+    ) {
+        enabled?.let { eyePositionAdjustmentEnabled = it }
+        downward?.let { eyePositionDownward = it }
+        outward?.let { eyePositionOutward = it }
+        invalidate()
+    }
+    
     
 
 
@@ -246,11 +262,27 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         if (eyePoints.isEmpty()) return EyeSphere(0f, 0f, 0f)
 
         val adjustedPoints = eyePoints.map { adjustPosition(it, xOffset, yOffset, zOffset) }
-        val centerX = adjustedPoints.map { it.first }.average().toFloat()
-        val centerY = adjustedPoints.map { it.second }.average().toFloat()
-        val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
+        val landmarkCenterX = adjustedPoints.map { it.first }.average().toFloat()
+        val landmarkCenterY = adjustedPoints.map { it.second }.average().toFloat()
+        val radius = adjustedPoints.map { point -> sqrt((point.first - landmarkCenterX).pow(2) + (point.second - landmarkCenterY).pow(2)) }.average().toFloat()
 
-        return EyeSphere(centerX, centerY, radius, radius * 2f, radius * 2f)
+        // Adjust eye position relative to landmark center for better gaze lines
+        var eyeCenterX = landmarkCenterX
+        var eyeCenterY = landmarkCenterY
+        
+        if (eyePositionAdjustmentEnabled) {
+            // Move eye down relative to landmark center
+            eyeCenterY += eyePositionDownward * radius
+            
+            // Move eye outward (left/right) relative to landmark center
+            if (isRightEye) {
+                eyeCenterX += eyePositionOutward * radius  // Right eye moves right
+            } else {
+                eyeCenterX -= eyePositionOutward * radius  // Left eye moves left
+            }
+        }
+
+        return EyeSphere(eyeCenterX, eyeCenterY, radius, radius * 2f, radius * 2f)
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
@@ -505,8 +537,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val fpsText = "FPS: $currentFPS"
         val gazeText = "Gaze: ${if (gazeCurvatureEnabled) "ON" else "OFF"} D${"%.2f".format(gazeCurvatureDownward)} S${"%.2f".format(gazeCurvatureStrength)}"
+        val positionText = "Eye Pos: ${if (eyePositionAdjustmentEnabled) "ON" else "OFF"} D${"%.2f".format(eyePositionDownward)} O${"%.2f".format(eyePositionOutward)}"
         
         canvas.drawText(fpsText, 20f, 170f, textPaint)
         canvas.drawText(gazeText, 20f, 210f, textPaint)
+        canvas.drawText(positionText, 20f, 250f, textPaint)
     }
 }
