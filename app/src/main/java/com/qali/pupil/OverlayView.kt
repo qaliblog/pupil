@@ -54,16 +54,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     // FPS Display
     var currentFPS = 0
     
-    // Eye Sphere Stretching for Better Gaze Lines
-    var eyeStretchEnabled = true
-    var eyeStretchDownward = 0.15f      // Stretch eyes downward
-    var eyeStretchOutward = 0.1f        // Stretch eyes outward (left/right)
     
     // Cursor Position Range Effects
     var cursorRangeEnabled = true
     var cursorXRange = 0.3f             // X position range effect on cursor
     var cursorYRange = 0.2f             // Y position range effect on cursor
     var cursorDistanceRange = 0.4f      // Distance range effect on cursor
+    
+    // Gaze Line Curvature
+    var gazeCurvatureEnabled = true
+    var gazeCurvatureDownward = 0.3f    // How much to curve gaze lines downward
+    var gazeCurvatureStrength = 0.5f    // Strength of the curvature effect
 
     // Gyroscope
     private var gyroVelocityX = 0.0f
@@ -184,14 +185,14 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
-    fun updateEyeStretch(
+    fun updateGazeCurvature(
         enabled: Boolean? = null,
         downward: Float? = null,
-        outward: Float? = null
+        strength: Float? = null
     ) {
-        enabled?.let { eyeStretchEnabled = it }
-        downward?.let { eyeStretchDownward = it }
-        outward?.let { eyeStretchOutward = it }
+        enabled?.let { gazeCurvatureEnabled = it }
+        downward?.let { gazeCurvatureDownward = it }
+        strength?.let { gazeCurvatureStrength = it }
         invalidate()
     }
     
@@ -267,31 +268,30 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val centerY = adjustedPoints.map { it.second }.average().toFloat()
         val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
 
-        // Apply eye stretching for better gaze line accuracy
-        var stretchX = 1f
-        var stretchY = 1f
-        
-        if (eyeStretchEnabled) {
-            // Stretch downward (Y) and outward (X) slightly
-            stretchY += eyeStretchDownward
-            stretchX += eyeStretchOutward
-            
-            // Add slight outward stretch based on eye position
-            if (isRightEye) {
-                stretchX += eyeStretchOutward * 0.5f  // Right eye stretches more outward
-            } else {
-                stretchX += eyeStretchOutward * 0.3f  // Left eye stretches less outward
-            }
-        }
-
-        return EyeSphere(centerX, centerY, radius, radius * 2f * stretchX, radius * 2f * stretchY)
+        return EyeSphere(centerX, centerY, radius, radius * 2f, radius * 2f)
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
         val directionX = pupilPoint.first - sphereCenter.first
         val directionY = pupilPoint.second - sphereCenter.second
-        val endX = pupilPoint.first + directionX * extensionFactor
-        val endY = pupilPoint.second + directionY * extensionFactor
+        
+        // Apply downward curvature to the gaze line
+        val curvatureEffect = if (gazeCurvatureEnabled) {
+            // Calculate how much to curve downward based on the line length and curvature settings
+            val lineLength = sqrt(directionX * directionX + directionY * directionY)
+            val curvatureAmount = lineLength * gazeCurvatureDownward * gazeCurvatureStrength
+            curvatureAmount
+        } else {
+            0f
+        }
+        
+        // Apply the curvature by adding downward component
+        val curvedDirectionX = directionX
+        val curvedDirectionY = directionY + curvatureEffect
+        
+        val endX = pupilPoint.first + curvedDirectionX * extensionFactor
+        val endY = pupilPoint.second + curvedDirectionY * extensionFactor
+        
         return GazeLine(sphereCenter.first, sphereCenter.second, endX, endY)
     }
     
@@ -542,11 +542,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val fpsText = "FPS: $currentFPS"
-        val stretchText = "Stretch: ${if (eyeStretchEnabled) "ON" else "OFF"} D${"%.2f".format(eyeStretchDownward)} O${"%.2f".format(eyeStretchOutward)}"
+        val gazeText = "Gaze: ${if (gazeCurvatureEnabled) "ON" else "OFF"} D${"%.2f".format(gazeCurvatureDownward)} S${"%.2f".format(gazeCurvatureStrength)}"
         val rangeText = "Range: ${if (cursorRangeEnabled) "ON" else "OFF"} X${"%.2f".format(cursorXRange)} Y${"%.2f".format(cursorYRange)} D${"%.2f".format(cursorDistanceRange)}"
         
         canvas.drawText(fpsText, 20f, 170f, textPaint)
-        canvas.drawText(stretchText, 20f, 210f, textPaint)
+        canvas.drawText(gazeText, 20f, 210f, textPaint)
         canvas.drawText(rangeText, 20f, 250f, textPaint)
     }
 }
