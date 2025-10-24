@@ -49,6 +49,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var sphereBottomStretchMultiplier = 1.0f
     var sphereOuterStretchMultiplier = 1.0f
     
+    // Screen Size Effect for Y Stretch
+    var screenSizeEffectEnabled = true
+    var screenSizeEffectRange = 1000f  // Range from 0 to 1000
+    var screenSizeEffectStrength = 0.5f  // How much the effect influences Y stretch
+    private var screenHeight = 0f
+    private var screenWidth = 0f
+    
+    // Reverse X Effect of Yellow Line (Head Direction) on Eye Stretch
+    var reverseXEffectEnabled = true
+    var reverseXEffectStrength = 0.3f  // How much the reverse X effect influences eye stretch
+    
     // FPS Display
     var currentFPS = 0
 
@@ -170,6 +181,26 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         currentFPS = fps
         invalidate()
     }
+    
+    fun updateScreenSizeEffect(
+        enabled: Boolean? = null,
+        range: Float? = null,
+        strength: Float? = null
+    ) {
+        enabled?.let { screenSizeEffectEnabled = it }
+        range?.let { screenSizeEffectRange = it }
+        strength?.let { screenSizeEffectStrength = it }
+        invalidate()
+    }
+    
+    fun updateReverseXEffect(
+        enabled: Boolean? = null,
+        strength: Float? = null
+    ) {
+        enabled?.let { reverseXEffectEnabled = it }
+        strength?.let { reverseXEffectStrength = it }
+        invalidate()
+    }
 
 
     // --- Gyroscope Sensor Handling ---
@@ -229,6 +260,25 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
         val zScale = 1f + (zOffset / 1000f)
         
+        // Apply screen size effect for Y stretch
+        var screenSizeYStretch = 0f
+        if (screenSizeEffectEnabled && screenHeight > 0) {
+            // Calculate effect based on position from top of screen (0 to screenHeight)
+            val topPixelPosition = centerY.coerceIn(0f, screenHeight)
+            val normalizedPosition = topPixelPosition / screenHeight  // 0 to 1
+            val effectRange = screenSizeEffectRange / 1000f  // Convert 0-1000 to 0-1
+            val effectStrength = normalizedPosition * effectRange * screenSizeEffectStrength
+            screenSizeYStretch = effectStrength * radius  // Scale by radius for proportional effect
+        }
+        
+        // Apply reverse X effect of yellow line (head direction) on eye stretch
+        var reverseXStretch = 0f
+        if (reverseXEffectEnabled) {
+            // Use head direction X component but reverse it
+            val reverseXDirection = -headDirectionX  // Reverse the X direction
+            reverseXStretch = reverseXDirection * reverseXEffectStrength * radius
+        }
+        
         // Apply head direction-based sphere stretch adjustment
         // Move sphere toward bottom and outer direction relative to head direction line
         val headDirectionMagnitude = sqrt(headDirectionX * headDirectionX + headDirectionY * headDirectionY)
@@ -248,13 +298,19 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val bottomStretch = normalizedHeadY * sphereStretchFactor * sphereBottomStretchMultiplier * headDirectionMagnitude
             val outerStretch = perpX * outerDirection * sphereStretchFactor * sphereOuterStretchMultiplier * headDirectionMagnitude
             
-            val adjustedCenterX = centerX + outerStretch
-            val adjustedCenterY = centerY + bottomStretch
+            // Apply reverse X effect
+            val finalReverseXStretch = reverseXStretch * headDirectionMagnitude  // Scale by head direction magnitude
+            
+            val adjustedCenterX = centerX + outerStretch + finalReverseXStretch
+            val adjustedCenterY = centerY + bottomStretch + screenSizeYStretch
             
             return EyeSphere(adjustedCenterX, adjustedCenterY, radius, radius * 2f, zScale)
         }
         
-        return EyeSphere(centerX, centerY, radius, radius * 2f, zScale)
+        // Apply screen size effect and reverse X effect even without head direction
+        val adjustedCenterX = centerX + reverseXStretch
+        val adjustedCenterY = centerY + screenSizeYStretch
+        return EyeSphere(adjustedCenterX, adjustedCenterY, radius, radius * 2f, zScale)
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
@@ -317,6 +373,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // Capture screen dimensions for screen size effect
+        screenWidth = width.toFloat()
+        screenHeight = height.toFloat()
 
         if (landmarks.isEmpty()) return
 
@@ -492,7 +552,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val sphereStretchText = "Sphere Stretch: ${"%.2f".format(sphereStretchFactor)}"
         val fpsText = "FPS: $currentFPS"
+        val screenSizeText = "Screen Effect: ${if (screenSizeEffectEnabled) "ON" else "OFF"} (${"%.1f".format(screenSizeEffectStrength)})"
+        val reverseXText = "Reverse X: ${if (reverseXEffectEnabled) "ON" else "OFF"} (${"%.2f".format(reverseXEffectStrength)})"
         canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
         canvas.drawText(fpsText, 20f, 210f, textPaint)
+        canvas.drawText(screenSizeText, 20f, 250f, textPaint)
+        canvas.drawText(reverseXText, 20f, 290f, textPaint)
     }
 }
