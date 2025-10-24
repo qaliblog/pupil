@@ -43,6 +43,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     // Head Direction
     var averageFaceWeightYOffset = 70f
+    
+    // Sphere Stretch Adjustment
+    var sphereStretchFactor = 0.3f
+    var sphereBottomStretchMultiplier = 1.0f
+    var sphereOuterStretchMultiplier = 1.0f
 
     // Gyroscope
     private var gyroVelocityX = 0.0f
@@ -146,6 +151,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         damping?.let { pointerDampingFactor = it }
         invalidate()
     }
+    
+    fun updateSphereStretchControls(
+        stretchFactor: Float? = null,
+        bottomStretchMultiplier: Float? = null,
+        outerStretchMultiplier: Float? = null
+    ) {
+        stretchFactor?.let { sphereStretchFactor = it }
+        bottomStretchMultiplier?.let { sphereBottomStretchMultiplier = it }
+        outerStretchMultiplier?.let { sphereOuterStretchMultiplier = it }
+        invalidate()
+    }
 
 
     // --- Gyroscope Sensor Handling ---
@@ -197,13 +213,39 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         return Pair(point.first + xOffset * zScale, point.second + yOffset * zScale)
     }
 
-    private fun calculateEyeSphere(eyePoints: List<Pair<Float, Float>>, xOffset: Float, yOffset: Float, zOffset: Float): EyeSphere {
+    private fun calculateEyeSphere(eyePoints: List<Pair<Float, Float>>, xOffset: Float, yOffset: Float, zOffset: Float, headDirectionX: Float = 0f, headDirectionY: Float = 0f, isRightEye: Boolean = true): EyeSphere {
         if (eyePoints.isEmpty()) return EyeSphere(0f, 0f, 0f)
         val adjustedPoints = eyePoints.map { adjustPosition(it, xOffset, yOffset, zOffset) }
         val centerX = adjustedPoints.map { it.first }.average().toFloat()
         val centerY = adjustedPoints.map { it.second }.average().toFloat()
         val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
         val zScale = 1f + (zOffset / 1000f)
+        
+        // Apply head direction-based sphere stretch adjustment
+        // Move sphere toward bottom and outer direction relative to head direction line
+        val headDirectionMagnitude = sqrt(headDirectionX * headDirectionX + headDirectionY * headDirectionY)
+        if (headDirectionMagnitude > 0.1f) {
+            // Normalize head direction
+            val normalizedHeadX = headDirectionX / headDirectionMagnitude
+            val normalizedHeadY = headDirectionY / headDirectionMagnitude
+            
+            // Calculate perpendicular direction (90 degrees counterclockwise)
+            val perpX = -normalizedHeadY
+            val perpY = normalizedHeadX
+            
+            // Determine outer direction based on eye (left eye goes left, right eye goes right)
+            val outerDirection = if (isRightEye) 1f else -1f
+            
+            // Apply stretch adjustment: move toward bottom and outer
+            val bottomStretch = normalizedHeadY * sphereStretchFactor * sphereBottomStretchMultiplier * headDirectionMagnitude
+            val outerStretch = perpX * outerDirection * sphereStretchFactor * sphereOuterStretchMultiplier * headDirectionMagnitude
+            
+            val adjustedCenterX = centerX + outerStretch
+            val adjustedCenterY = centerY + bottomStretch
+            
+            return EyeSphere(adjustedCenterX, adjustedCenterY, radius, radius * 2f, zScale)
+        }
+        
         return EyeSphere(centerX, centerY, radius, radius * 2f, zScale)
     }
 
@@ -275,13 +317,24 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val sphereLeftEyePoints = sphereLeftEyeIndices.mapNotNull { landmarks.getOrNull(it) }
         val rightEyePoints = rightEyeIndices.mapNotNull { landmarks.getOrNull(it) }
         val leftEyePoints = leftEyeIndices.mapNotNull { landmarks.getOrNull(it) }
-        val headDirectionPoints = headDirectionIndices.mapNotNull { landmarks.getOrNull(it) }
-        val headDirectionTarget = landmarks.getOrNull(headDirectionTargetIndex)
         val leftPupil = landmarks.getOrNull(leftPupilIndex)
         val rightPupil = landmarks.getOrNull(rightPupilIndex)
 
-        val rightSphere = calculateEyeSphere(sphereRightEyePoints, rightEyeX, rightEyeY, rightEyeZ)
-        val leftSphere = calculateEyeSphere(sphereLeftEyePoints, leftEyeX, leftEyeY, leftEyeZ)
+        // Calculate head direction first
+        val headDirectionPoints = headDirectionIndices.mapNotNull { landmarks.getOrNull(it) }
+        val headDirectionTarget = landmarks.getOrNull(headDirectionTargetIndex)
+        var headDirectionX = 0f
+        var headDirectionY = 0f
+        
+        headDirectionTarget?.let {
+            val averageFacePoint = calculateWeightedAveragePoint(headDirectionPoints, averageFaceWeightYOffset)
+            val (dirX, dirY, magnitude) = calculateHeadDirection(averageFacePoint, it)
+            headDirectionX = dirX * magnitude
+            headDirectionY = dirY * magnitude
+        }
+        
+        val rightSphere = calculateEyeSphere(sphereRightEyePoints, rightEyeX, rightEyeY, rightEyeZ, headDirectionX, headDirectionY, isRightEye = true)
+        val leftSphere = calculateEyeSphere(sphereLeftEyePoints, leftEyeX, leftEyeY, leftEyeZ, headDirectionX, headDirectionY, isRightEye = false)
 
         draw3DSphere(canvas, leftSphere, isRightEye = false)
         draw3DSphere(canvas, rightSphere, isRightEye = true)
@@ -310,14 +363,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val averageGazeX = totalGazeX / gazeCount
             val averageGazeY = totalGazeY / gazeCount
 
-            // Head Direction Calculation
-            val averageFacePoint = calculateWeightedAveragePoint(headDirectionPoints, averageFaceWeightYOffset)
-            var headDirectionX = 0f
-            var headDirectionY = 0f
+            // Draw head direction vector
             headDirectionTarget?.let {
+                val averageFacePoint = calculateWeightedAveragePoint(headDirectionPoints, averageFaceWeightYOffset)
                 val (dirX, dirY, magnitude) = calculateHeadDirection(averageFacePoint, it)
-                headDirectionX = dirX * magnitude
-                headDirectionY = dirY * magnitude
                 canvas.drawLine(averageFacePoint.first, averageFacePoint.second, it.first + dirX * 2, it.second + dirY * 2, headVectorPaint)
             }
 
@@ -433,5 +482,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(pointerPosText, 20f, 50f, textPaint)
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
+        val sphereStretchText = "Sphere Stretch: ${\"%.2f\".format(sphereStretchFactor)}"
+        val headDirText = "Head Dir: (${headDirectionX.toInt()}, ${headDirectionY.toInt()})"
+        canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
+        canvas.drawText(headDirText, 20f, 210f, textPaint)
     }
 }
