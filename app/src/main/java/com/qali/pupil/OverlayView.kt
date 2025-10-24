@@ -49,16 +49,25 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var sphereBottomStretchMultiplier = 1.0f
     var sphereOuterStretchMultiplier = 1.0f
     
-    // Screen Size Effect for Y Stretch
-    var screenSizeEffectEnabled = true
-    var screenSizeEffectRange = 1000f  // Range from 0 to 1000
-    var screenSizeEffectStrength = 0.5f  // How much the effect influences Y stretch
+    // New Unified Eye Adjustment System
+    var eyeAdjustmentEnabled = true
+    
+    // Position Adjustments (affects where eyes are positioned)
+    var headDirectionPositionInfluence = 0.2f  // How much head direction affects eye position
+    var screenPositionInfluence = 0.1f  // How much screen position affects eye position
+    var gazeDirectionInfluence = 0.15f  // How much gaze direction affects eye position
+    
+    // Size Adjustments (affects eye sphere size)
+    var distanceSizeInfluence = 0.3f  // How much distance affects eye size
+    var headTiltSizeInfluence = 0.1f  // How much head tilt affects eye size
+    var screenSizeInfluence = 0.05f  // How much screen position affects eye size
+    
+    // Stretch Adjustments (affects eye sphere shape)
+    var headDirectionStretchInfluence = 0.1f  // How much head direction affects eye shape
+    var gazeStretchInfluence = 0.05f  // How much gaze affects eye shape
+    
     private var screenHeight = 0f
     private var screenWidth = 0f
-    
-    // Reverse X Effect of Yellow Line (Head Direction) on Eye Stretch
-    var reverseXEffectEnabled = true
-    var reverseXEffectStrength = 0.3f  // How much the reverse X effect influences eye stretch
     
     // FPS Display
     var currentFPS = 0
@@ -182,23 +191,26 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
-    fun updateScreenSizeEffect(
+    fun updateEyeAdjustment(
         enabled: Boolean? = null,
-        range: Float? = null,
-        strength: Float? = null
+        headDirectionPosition: Float? = null,
+        screenPosition: Float? = null,
+        gazeDirection: Float? = null,
+        distanceSize: Float? = null,
+        headTiltSize: Float? = null,
+        screenSize: Float? = null,
+        headDirectionStretch: Float? = null,
+        gazeStretch: Float? = null
     ) {
-        enabled?.let { screenSizeEffectEnabled = it }
-        range?.let { screenSizeEffectRange = it }
-        strength?.let { screenSizeEffectStrength = it }
-        invalidate()
-    }
-    
-    fun updateReverseXEffect(
-        enabled: Boolean? = null,
-        strength: Float? = null
-    ) {
-        enabled?.let { reverseXEffectEnabled = it }
-        strength?.let { reverseXEffectStrength = it }
+        enabled?.let { eyeAdjustmentEnabled = it }
+        headDirectionPosition?.let { headDirectionPositionInfluence = it }
+        screenPosition?.let { screenPositionInfluence = it }
+        gazeDirection?.let { gazeDirectionInfluence = it }
+        distanceSize?.let { distanceSizeInfluence = it }
+        headTiltSize?.let { headTiltSizeInfluence = it }
+        screenSize?.let { screenSizeInfluence = it }
+        headDirectionStretch?.let { headDirectionStretchInfluence = it }
+        gazeStretch?.let { gazeStretchInfluence = it }
         invalidate()
     }
 
@@ -254,63 +266,105 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     private fun calculateEyeSphere(eyePoints: List<Pair<Float, Float>>, xOffset: Float, yOffset: Float, zOffset: Float, headDirectionX: Float = 0f, headDirectionY: Float = 0f, isRightEye: Boolean = true): EyeSphere {
         if (eyePoints.isEmpty()) return EyeSphere(0f, 0f, 0f)
+        
+        // Base calculations
         val adjustedPoints = eyePoints.map { adjustPosition(it, xOffset, yOffset, zOffset) }
-        val centerX = adjustedPoints.map { it.first }.average().toFloat()
-        val centerY = adjustedPoints.map { it.second }.average().toFloat()
-        val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
-        val zScale = 1f + (zOffset / 1000f)
+        val baseCenterX = adjustedPoints.map { it.first }.average().toFloat()
+        val baseCenterY = adjustedPoints.map { it.second }.average().toFloat()
+        val baseRadius = adjustedPoints.map { point -> sqrt((point.first - baseCenterX).pow(2) + (point.second - baseCenterY).pow(2)) }.average().toFloat()
         
-        // Apply screen size effect for Y stretch
-        var screenSizeYStretch = 0f
-        if (screenSizeEffectEnabled && screenHeight > 0) {
-            // Calculate effect based on position from top of screen (0 to screenHeight)
-            val topPixelPosition = centerY.coerceIn(0f, screenHeight)
-            val normalizedPosition = topPixelPosition / screenHeight  // 0 to 1
-            val effectRange = screenSizeEffectRange / 1000f  // Convert 0-1000 to 0-1
-            val effectStrength = normalizedPosition * effectRange * screenSizeEffectStrength
-            screenSizeYStretch = effectStrength * radius  // Scale by radius for proportional effect
+        if (!eyeAdjustmentEnabled) {
+            return EyeSphere(baseCenterX, baseCenterY, baseRadius, baseRadius * 2f, 1f + (zOffset / 1000f))
         }
         
-        // Apply reverse X effect of yellow line (head direction) on eye stretch
-        var reverseXStretch = 0f
-        if (reverseXEffectEnabled) {
-            // Use head direction X component but reverse it
-            val reverseXDirection = -headDirectionX  // Reverse the X direction
-            reverseXStretch = reverseXDirection * reverseXEffectStrength * radius
-        }
+        // === POSITION ADJUSTMENTS ===
+        // These affect WHERE the eye is positioned, not its size or shape
         
-        // Apply head direction-based sphere stretch adjustment
-        // Move sphere toward bottom and outer direction relative to head direction line
+        var positionX = baseCenterX
+        var positionY = baseCenterY
+        
+        // 1. Head Direction Position Influence
         val headDirectionMagnitude = sqrt(headDirectionX * headDirectionX + headDirectionY * headDirectionY)
         if (headDirectionMagnitude > 0.1f) {
-            // Normalize head direction
             val normalizedHeadX = headDirectionX / headDirectionMagnitude
             val normalizedHeadY = headDirectionY / headDirectionMagnitude
             
-            // Calculate perpendicular direction (90 degrees counterclockwise)
-            val perpX = -normalizedHeadY
-            val perpY = normalizedHeadX
+            // Move eyes in opposite direction of head movement for compensation
+            val headCompensationX = -normalizedHeadX * headDirectionPositionInfluence * headDirectionMagnitude * baseRadius
+            val headCompensationY = -normalizedHeadY * headDirectionPositionInfluence * headDirectionMagnitude * baseRadius
             
-            // Determine outer direction based on eye (left eye goes left, right eye goes right)
-            val outerDirection = if (isRightEye) 1f else -1f
-            
-            // Apply stretch adjustment: move toward bottom and outer
-            val bottomStretch = normalizedHeadY * sphereStretchFactor * sphereBottomStretchMultiplier * headDirectionMagnitude
-            val outerStretch = perpX * outerDirection * sphereStretchFactor * sphereOuterStretchMultiplier * headDirectionMagnitude
-            
-            // Apply reverse X effect
-            val finalReverseXStretch = reverseXStretch * headDirectionMagnitude  // Scale by head direction magnitude
-            
-            val adjustedCenterX = centerX + outerStretch + finalReverseXStretch
-            val adjustedCenterY = centerY + bottomStretch + screenSizeYStretch
-            
-            return EyeSphere(adjustedCenterX, adjustedCenterY, radius, radius * 2f, zScale)
+            positionX += headCompensationX
+            positionY += headCompensationY
         }
         
-        // Apply screen size effect and reverse X effect even without head direction
-        val adjustedCenterX = centerX + reverseXStretch
-        val adjustedCenterY = centerY + screenSizeYStretch
-        return EyeSphere(adjustedCenterX, adjustedCenterY, radius, radius * 2f, zScale)
+        // 2. Screen Position Influence (based on distance from center)
+        if (screenHeight > 0 && screenWidth > 0) {
+            val screenCenterX = screenWidth / 2f
+            val screenCenterY = screenHeight / 2f
+            
+            val distanceFromCenterX = (baseCenterX - screenCenterX) / screenWidth
+            val distanceFromCenterY = (baseCenterY - screenCenterY) / screenHeight
+            
+            // Adjust position based on distance from screen center
+            val screenAdjustmentX = distanceFromCenterX * screenPositionInfluence * baseRadius
+            val screenAdjustmentY = distanceFromCenterY * screenPositionInfluence * baseRadius
+            
+            positionX += screenAdjustmentX
+            positionY += screenAdjustmentY
+        }
+        
+        // 3. Gaze Direction Influence (if we have gaze data)
+        // This would be implemented when we have gaze tracking data
+        
+        // === SIZE ADJUSTMENTS ===
+        // These affect the SIZE of the eye sphere
+        
+        var sizeMultiplier = 1f
+        
+        // 1. Distance Size Influence
+        val distanceFactor = 1f + (zOffset / 1000f)  // Closer = smaller, farther = larger
+        sizeMultiplier *= (1f + (distanceFactor - 1f) * distanceSizeInfluence)
+        
+        // 2. Head Tilt Size Influence
+        if (headDirectionMagnitude > 0.1f) {
+            val headTiltFactor = abs(headDirectionY) / headDirectionMagnitude  // 0 to 1
+            sizeMultiplier *= (1f + headTiltFactor * headTiltSizeInfluence)
+        }
+        
+        // 3. Screen Size Influence
+        if (screenHeight > 0) {
+            val screenPositionFactor = baseCenterY / screenHeight  // 0 to 1
+            sizeMultiplier *= (1f + screenPositionFactor * screenSizeInfluence)
+        }
+        
+        val adjustedRadius = baseRadius * sizeMultiplier
+        
+        // === STRETCH ADJUSTMENTS ===
+        // These affect the SHAPE of the eye sphere (width vs height)
+        
+        var stretchX = 1f
+        var stretchY = 1f
+        
+        // 1. Head Direction Stretch Influence
+        if (headDirectionMagnitude > 0.1f) {
+            val normalizedHeadX = headDirectionX / headDirectionMagnitude
+            val normalizedHeadY = headDirectionY / headDirectionMagnitude
+            
+            // Stretch eyes perpendicular to head direction
+            stretchX += abs(normalizedHeadY) * headDirectionStretchInfluence
+            stretchY += abs(normalizedHeadX) * headDirectionStretchInfluence
+        }
+        
+        // 2. Gaze Stretch Influence (placeholder for future gaze data)
+        // This would be implemented when we have gaze tracking data
+        
+        return EyeSphere(
+            positionX, 
+            positionY, 
+            adjustedRadius, 
+            adjustedRadius * 2f * stretchX,  // Width
+            adjustedRadius * 2f * stretchY   // Height
+        )
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
@@ -550,13 +604,16 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(pointerPosText, 20f, 50f, textPaint)
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
-        val sphereStretchText = "Sphere Stretch: ${"%.2f".format(sphereStretchFactor)}"
         val fpsText = "FPS: $currentFPS"
-        val screenSizeText = "Screen Effect: ${if (screenSizeEffectEnabled) "ON" else "OFF"} (${"%.1f".format(screenSizeEffectStrength)})"
-        val reverseXText = "Reverse X: ${if (reverseXEffectEnabled) "ON" else "OFF"} (${"%.2f".format(reverseXEffectStrength)})"
-        canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
-        canvas.drawText(fpsText, 20f, 210f, textPaint)
-        canvas.drawText(screenSizeText, 20f, 250f, textPaint)
-        canvas.drawText(reverseXText, 20f, 290f, textPaint)
+        val adjustmentText = "Eye Adj: ${if (eyeAdjustmentEnabled) "ON" else "OFF"}"
+        val positionText = "Pos: H${"%.2f".format(headDirectionPositionInfluence)} S${"%.2f".format(screenPositionInfluence)}"
+        val sizeText = "Size: D${"%.2f".format(distanceSizeInfluence)} T${"%.2f".format(headTiltSizeInfluence)}"
+        val stretchText = "Stretch: H${"%.2f".format(headDirectionStretchInfluence)} G${"%.2f".format(gazeStretchInfluence)}"
+        
+        canvas.drawText(fpsText, 20f, 170f, textPaint)
+        canvas.drawText(adjustmentText, 20f, 210f, textPaint)
+        canvas.drawText(positionText, 20f, 250f, textPaint)
+        canvas.drawText(sizeText, 20f, 290f, textPaint)
+        canvas.drawText(stretchText, 20f, 330f, textPaint)
     }
 }
