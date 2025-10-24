@@ -490,7 +490,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(pointerPosText, 20f, 50f, textPaint)
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
-        val sphereStretchText = "Sphere Stretch: ${\"%.2f\".format(sphereStretchFactor)}"
+        val sphereStretchText = "Sphere Stretch: ${"%.2f".format(sphereStretchFactor)}"
         val fpsText = "FPS: $currentFPS"
         canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
         canvas.drawText(fpsText, 20f, 210f, textPaint)
