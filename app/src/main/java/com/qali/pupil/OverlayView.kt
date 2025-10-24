@@ -48,6 +48,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var sphereStretchFactor = 0.3f
     var sphereBottomStretchMultiplier = 1.0f
     var sphereOuterStretchMultiplier = 1.0f
+    
+    // FPS Display
+    var currentFPS = 0
 
     // Gyroscope
     private var gyroVelocityX = 0.0f
@@ -160,6 +163,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         stretchFactor?.let { sphereStretchFactor = it }
         bottomStretchMultiplier?.let { sphereBottomStretchMultiplier = it }
         outerStretchMultiplier?.let { sphereOuterStretchMultiplier = it }
+        invalidate()
+    }
+    
+    fun updateFPS(fps: Int) {
+        currentFPS = fps
         invalidate()
     }
 
@@ -483,6 +491,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val sphereStretchText = "Sphere Stretch: ${\"%.2f\".format(sphereStretchFactor)}"
+        val fpsText = "FPS: $currentFPS"
         canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
+        canvas.drawText(fpsText, 20f, 210f, textPaint)
     }
 }

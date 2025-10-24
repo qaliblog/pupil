@@ -73,8 +73,8 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
             .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
             .build()
 
-        // Optimize camera resolution
-        val targetResolution = Size(640, 480)  // Lower resolution for better performance
+        // Optimize camera resolution for maximum FPS
+        val targetResolution = Size(480, 360)  // Even lower resolution for maximum performance
 
         val preview = Preview.Builder()
             .setTargetResolution(targetResolution)
@@ -137,6 +137,11 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
 
         // Update the overlay view with the adjusted landmarks
         overlayView.setLandmarks(adjustedLandmarks)
+        
+        // Update FPS display
+        faceLandmarkerHelper.getCurrentFPS()?.let { fps ->
+            overlayView.updateFPS(fps)
+        }
     } else {
         overlayView.clear()
     }

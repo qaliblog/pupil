@@ -28,6 +28,10 @@ class FaceLandmarkerHelper(
     private var lastFpsTimestamp = SystemClock.elapsedRealtime()
     private var frameProcessedInOneSecond = 0
     private var framesPerSecond = 0
+    private var lastProcessTime = 0L
+    private var targetFrameInterval = 33L // ~30 FPS target (33ms between frames)
+    private var adaptiveFrameSkip = 0
+    private var frameSkipCounter = 0
 
     init {
         setupFaceLandmarker()
@@ -43,9 +47,9 @@ class FaceLandmarkerHelper(
         val options = FaceLandmarker.FaceLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setNumFaces(1)
-            .setMinFaceDetectionConfidence(0.5f)  // Lower this if needed
-            .setMinFacePresenceConfidence(0.5f)   // Lower this if needed
-            .setMinTrackingConfidence(0.5f)       // Lower this if needed
+            .setMinFaceDetectionConfidence(0.3f)  // Lower for better detection
+            .setMinFacePresenceConfidence(0.3f)   // Lower for better detection
+            .setMinTrackingConfidence(0.3f)       // Lower for better tracking
             .setRunningMode(RunningMode.LIVE_STREAM)
             .setResultListener(this::returnLivestreamResult)
             .setErrorListener(this::returnLivestreamError)
@@ -59,21 +63,43 @@ class FaceLandmarkerHelper(
     }
 }
 
+    fun getCurrentFPS(): Int? {
+        return if (framesPerSecond > 0) framesPerSecond else null
+    }
+    
     fun detectLiveStream(
         imageProxy: ImageProxy,
         isFrontCamera: Boolean
     ) {
         cameraExecutor.execute {
-            // Update FPS calculation
+            val currentTime = SystemClock.uptimeMillis()
+            
+            // Adaptive frame skipping for better FPS
+            frameSkipCounter++
+            if (frameSkipCounter <= adaptiveFrameSkip) {
+                imageProxy.close()
+                return@execute
+            }
+            frameSkipCounter = 0
+            lastProcessTime = currentTime
+            
+            // Update FPS calculation and adaptive frame skipping
             val currentTimestamp = SystemClock.elapsedRealtime()
             frameProcessedInOneSecond++
             if (currentTimestamp - lastFpsTimestamp >= 1000) {
                 framesPerSecond = frameProcessedInOneSecond
                 frameProcessedInOneSecond = 0
                 lastFpsTimestamp = currentTimestamp
+                
+                // Adaptive frame skipping based on performance
+                when {
+                    framesPerSecond < 20 -> adaptiveFrameSkip = 0  // Process all frames
+                    framesPerSecond < 30 -> adaptiveFrameSkip = 1  // Skip every other frame
+                    else -> adaptiveFrameSkip = 2  // Skip 2 out of 3 frames
+                }
             }
 
-            val frameTime = SystemClock.uptimeMillis()
+            val frameTime = currentTime
 
             // More efficient bitmap creation
             val bitmap = imageProxy.toBitmap()
@@ -83,34 +109,39 @@ class FaceLandmarkerHelper(
                 return@execute
             }
 
-            // Reuse matrix object
-            val matrix = Matrix().apply {
-                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                if (isFrontCamera) {
-                    postScale(-1f, 1f, bitmap.width.toFloat(), bitmap.height.toFloat())
-                }
+            // Skip processing if bitmap is too small or invalid
+            if (bitmap.width < 100 || bitmap.height < 100) {
+                bitmap.recycle()
+                imageProxy.close()
+                return@execute
             }
 
-            val rotatedBitmap = Bitmap.createBitmap(
-                bitmap,
-                0,
-                0,
-                bitmap.width,
-                bitmap.height,
-                matrix,
-                false  // Changed to false for better performance
-            )
+            // Reuse matrix object - only create if needed
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            val needsRotation = rotation != 0 || isFrontCamera
+            
+            val processedBitmap = if (needsRotation) {
+                val matrix = Matrix().apply {
+                    if (rotation != 0) postRotate(rotation.toFloat())
+                    if (isFrontCamera) {
+                        postScale(-1f, 1f, bitmap.width.toFloat(), bitmap.height.toFloat())
+                    }
+                }
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
+            } else {
+                bitmap
+            }
 
-            val mpImage = BitmapImageBuilder(rotatedBitmap).build()
+            val mpImage = BitmapImageBuilder(processedBitmap).build()
 
             // Process frame
             detectAsync(mpImage, frameTime, imageProxy)
             
             // Clean up bitmaps
-            if (bitmap != rotatedBitmap) {
-                bitmap.recycle()
+            if (processedBitmap != bitmap) {
+                processedBitmap.recycle()
             }
-            rotatedBitmap.recycle()
+            bitmap.recycle()
         }
     }
 
