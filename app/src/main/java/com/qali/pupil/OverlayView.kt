@@ -53,6 +53,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     
     // FPS Display
     var currentFPS = 0
+    
+    // Eye Sphere Stretching for Better Gaze Lines
+    var eyeStretchEnabled = true
+    var eyeStretchDownward = 0.15f      // Stretch eyes downward
+    var eyeStretchOutward = 0.1f        // Stretch eyes outward (left/right)
+    
+    // Cursor Position Range Effects
+    var cursorRangeEnabled = true
+    var cursorXRange = 0.3f             // X position range effect on cursor
+    var cursorYRange = 0.2f             // Y position range effect on cursor
+    var cursorDistanceRange = 0.4f      // Distance range effect on cursor
 
     // Gyroscope
     private var gyroVelocityX = 0.0f
@@ -173,6 +184,30 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
+    fun updateEyeStretch(
+        enabled: Boolean? = null,
+        downward: Float? = null,
+        outward: Float? = null
+    ) {
+        enabled?.let { eyeStretchEnabled = it }
+        downward?.let { eyeStretchDownward = it }
+        outward?.let { eyeStretchOutward = it }
+        invalidate()
+    }
+    
+    fun updateCursorRange(
+        enabled: Boolean? = null,
+        xRange: Float? = null,
+        yRange: Float? = null,
+        distanceRange: Float? = null
+    ) {
+        enabled?.let { cursorRangeEnabled = it }
+        xRange?.let { cursorXRange = it }
+        yRange?.let { cursorYRange = it }
+        distanceRange?.let { cursorDistanceRange = it }
+        invalidate()
+    }
+    
 
 
     // --- Gyroscope Sensor Handling ---
@@ -232,7 +267,24 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val centerY = adjustedPoints.map { it.second }.average().toFloat()
         val radius = adjustedPoints.map { point -> sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2)) }.average().toFloat()
 
-        return EyeSphere(centerX, centerY, radius, radius * 2f, 1f + (zOffset / 1000f))
+        // Apply eye stretching for better gaze line accuracy
+        var stretchX = 1f
+        var stretchY = 1f
+        
+        if (eyeStretchEnabled) {
+            // Stretch downward (Y) and outward (X) slightly
+            stretchY += eyeStretchDownward
+            stretchX += eyeStretchOutward
+            
+            // Add slight outward stretch based on eye position
+            if (isRightEye) {
+                stretchX += eyeStretchOutward * 0.5f  // Right eye stretches more outward
+            } else {
+                stretchX += eyeStretchOutward * 0.3f  // Left eye stretches less outward
+            }
+        }
+
+        return EyeSphere(centerX, centerY, radius, radius * 2f * stretchX, radius * 2f * stretchY)
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
@@ -373,10 +425,30 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val headInfluencedCenterX = screenCenterX + (headDirectionX * pointerHeadSensitivity)
             val headInfluencedCenterY = screenCenterY - (headDirectionY * headTiltYBaseSensitivity)
             
-            // 4. Map gaze direction to screen coordinates
+            // 4. Map gaze direction to screen coordinates with range effects
             // Scale the gaze direction by sensitivity and distance factors
-            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor
-            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor
+            var gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor
+            var gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor
+            
+            // Apply cursor range effects for better accuracy
+            if (cursorRangeEnabled) {
+                // X position range effect - affects horizontal cursor movement
+                val eyeCenterX = (leftSphere.centerX + rightSphere.centerX) / 2f
+                val screenCenterX = width / 2f
+                val xPositionFactor = (eyeCenterX - screenCenterX) / screenCenterX  // -1 to 1
+                gazeScreenOffsetX += xPositionFactor * cursorXRange * 100f
+                
+                // Y position range effect - affects vertical cursor movement  
+                val eyeCenterY = (leftSphere.centerY + rightSphere.centerY) / 2f
+                val screenCenterY = height / 2f
+                val yPositionFactor = (eyeCenterY - screenCenterY) / screenCenterY  // -1 to 1
+                gazeScreenOffsetY += yPositionFactor * cursorYRange * 100f
+                
+                // Distance range effect - affects both X and Y based on distance from camera
+                val distanceFactor = (zOffset / 1000f).coerceIn(-1f, 1f)  // Normalize distance
+                gazeScreenOffsetX += distanceFactor * cursorDistanceRange * 50f
+                gazeScreenOffsetY += distanceFactor * cursorDistanceRange * 30f
+            }
             
             // 5. Calculate gyro influence for stabilization
             val gyroInfluenceX = -gyroVelocityX * pointerGyroSensitivity
@@ -470,6 +542,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val fpsText = "FPS: $currentFPS"
+        val stretchText = "Stretch: ${if (eyeStretchEnabled) "ON" else "OFF"} D${"%.2f".format(eyeStretchDownward)} O${"%.2f".format(eyeStretchOutward)}"
+        val rangeText = "Range: ${if (cursorRangeEnabled) "ON" else "OFF"} X${"%.2f".format(cursorXRange)} Y${"%.2f".format(cursorYRange)} D${"%.2f".format(cursorDistanceRange)}"
+        
         canvas.drawText(fpsText, 20f, 170f, textPaint)
+        canvas.drawText(stretchText, 20f, 210f, textPaint)
+        canvas.drawText(rangeText, 20f, 250f, textPaint)
     }
 }
