@@ -42,11 +42,11 @@ jobs:
     - name: Run tests
       run: ./gradlew test
 
-    - name: Build APK
-      run: ./gradlew assembleDebug
+    - name: Build Release APK
+      run: ./gradlew assembleRelease
 
-    - name: Upload APK artifact
+    - name: Upload Release APK artifact
       uses: actions/upload-artifact@v3
       with:
-        name: app-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: app-release-apk
+        path: app/build/outputs/apk/release/app-release.apk
