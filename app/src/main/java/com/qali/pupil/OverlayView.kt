@@ -49,7 +49,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var sphereBottomStretchMultiplier = 1.0f
     var sphereOuterStretchMultiplier = 1.0f
     
-    // New Unified Eye Adjustment System
+    // Eye Position and Gaze Line Adjustment System
     var eyeAdjustmentEnabled = true
     
     // Position Adjustments (affects where eyes are positioned)
@@ -62,9 +62,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var headTiltSizeInfluence = 0.1f  // How much head tilt affects eye size
     var screenSizeInfluence = 0.05f  // How much screen position affects eye size
     
-    // Stretch Adjustments (affects eye sphere shape)
-    var headDirectionStretchInfluence = 0.1f  // How much head direction affects eye shape
-    var gazeStretchInfluence = 0.05f  // How much gaze affects eye shape
+    // Gaze Line Curvature (affects gaze line direction)
+    var gazeCurvatureDownward = 0.3f  // How much to curve gaze lines downward
+    var gazeCurvatureStrength = 0.5f  // Strength of the curvature effect
     
     private var screenHeight = 0f
     private var screenWidth = 0f
@@ -199,8 +199,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         distanceSize: Float? = null,
         headTiltSize: Float? = null,
         screenSize: Float? = null,
-        headDirectionStretch: Float? = null,
-        gazeStretch: Float? = null
+        gazeCurvatureDownward: Float? = null,
+        gazeCurvatureStrength: Float? = null
     ) {
         enabled?.let { eyeAdjustmentEnabled = it }
         headDirectionPosition?.let { headDirectionPositionInfluence = it }
@@ -209,8 +209,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         distanceSize?.let { distanceSizeInfluence = it }
         headTiltSize?.let { headTiltSizeInfluence = it }
         screenSize?.let { screenSizeInfluence = it }
-        headDirectionStretch?.let { headDirectionStretchInfluence = it }
-        gazeStretch?.let { gazeStretchInfluence = it }
+        gazeCurvatureDownward?.let { this.gazeCurvatureDownward = it }
+        gazeCurvatureStrength?.let { this.gazeCurvatureStrength = it }
         invalidate()
     }
 
@@ -339,39 +339,37 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         
         val adjustedRadius = baseRadius * sizeMultiplier
         
-        // === STRETCH ADJUSTMENTS ===
-        // These affect the SHAPE of the eye sphere (width vs height)
-        
-        var stretchX = 1f
-        var stretchY = 1f
-        
-        // 1. Head Direction Stretch Influence
-        if (headDirectionMagnitude > 0.1f) {
-            val normalizedHeadX = headDirectionX / headDirectionMagnitude
-            val normalizedHeadY = headDirectionY / headDirectionMagnitude
-            
-            // Stretch eyes perpendicular to head direction
-            stretchX += abs(normalizedHeadY) * headDirectionStretchInfluence
-            stretchY += abs(normalizedHeadX) * headDirectionStretchInfluence
-        }
-        
-        // 2. Gaze Stretch Influence (placeholder for future gaze data)
-        // This would be implemented when we have gaze tracking data
-        
+        // Return eye sphere with standard circular shape (no stretching)
         return EyeSphere(
             positionX, 
             positionY, 
             adjustedRadius, 
-            adjustedRadius * 2f * stretchX,  // Width
-            adjustedRadius * 2f * stretchY   // Height
+            adjustedRadius * 2f,  // Standard width
+            adjustedRadius * 2f   // Standard height
         )
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
         val directionX = pupilPoint.first - sphereCenter.first
         val directionY = pupilPoint.second - sphereCenter.second
-        val endX = pupilPoint.first + directionX * extensionFactor
-        val endY = pupilPoint.second + directionY * extensionFactor
+        
+        // Apply downward curvature to the gaze line
+        val curvatureEffect = if (eyeAdjustmentEnabled) {
+            // Calculate how much to curve downward based on the line length and curvature settings
+            val lineLength = sqrt(directionX * directionX + directionY * directionY)
+            val curvatureAmount = lineLength * gazeCurvatureDownward * gazeCurvatureStrength
+            curvatureAmount
+        } else {
+            0f
+        }
+        
+        // Apply the curvature by adding downward component
+        val curvedDirectionX = directionX
+        val curvedDirectionY = directionY + curvatureEffect
+        
+        val endX = pupilPoint.first + curvedDirectionX * extensionFactor
+        val endY = pupilPoint.second + curvedDirectionY * extensionFactor
+        
         return GazeLine(sphereCenter.first, sphereCenter.second, endX, endY)
     }
     
@@ -608,12 +606,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val adjustmentText = "Eye Adj: ${if (eyeAdjustmentEnabled) "ON" else "OFF"}"
         val positionText = "Pos: H${"%.2f".format(headDirectionPositionInfluence)} S${"%.2f".format(screenPositionInfluence)}"
         val sizeText = "Size: D${"%.2f".format(distanceSizeInfluence)} T${"%.2f".format(headTiltSizeInfluence)}"
-        val stretchText = "Stretch: H${"%.2f".format(headDirectionStretchInfluence)} G${"%.2f".format(gazeStretchInfluence)}"
+        val gazeText = "Gaze: Down${"%.2f".format(gazeCurvatureDownward)} Str${"%.2f".format(gazeCurvatureStrength)}"
         
         canvas.drawText(fpsText, 20f, 170f, textPaint)
         canvas.drawText(adjustmentText, 20f, 210f, textPaint)
         canvas.drawText(positionText, 20f, 250f, textPaint)
         canvas.drawText(sizeText, 20f, 290f, textPaint)
-        canvas.drawText(stretchText, 20f, 330f, textPaint)
+        canvas.drawText(gazeText, 20f, 330f, textPaint)
     }
 }
