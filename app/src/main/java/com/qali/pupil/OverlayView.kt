@@ -483,8 +483,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeYText, 20f, 90f, textPaint)
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val sphereStretchText = "Sphere Stretch: ${\"%.2f\".format(sphereStretchFactor)}"
-        val headDirText = "Head Dir: (${headDirectionX.toInt()}, ${headDirectionY.toInt()})"
         canvas.drawText(sphereStretchText, 20f, 170f, textPaint)
-        canvas.drawText(headDirText, 20f, 210f, textPaint)
     }
 }
