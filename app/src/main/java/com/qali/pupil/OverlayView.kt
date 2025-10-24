@@ -55,12 +55,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var currentFPS = 0
     
     
-    // Cursor Position Range Effects
-    var cursorRangeEnabled = true
-    var cursorXRange = 0.3f             // X position range effect on cursor
-    var cursorYRange = 0.2f             // Y position range effect on cursor
-    var cursorDistanceRange = 0.4f      // Distance range effect on cursor
-    
     // Gaze Line Curvature
     var gazeCurvatureEnabled = true
     var gazeCurvatureDownward = 0.3f    // How much to curve gaze lines downward
@@ -196,18 +190,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
-    fun updateCursorRange(
-        enabled: Boolean? = null,
-        xRange: Float? = null,
-        yRange: Float? = null,
-        distanceRange: Float? = null
-    ) {
-        enabled?.let { cursorRangeEnabled = it }
-        xRange?.let { cursorXRange = it }
-        yRange?.let { cursorYRange = it }
-        distanceRange?.let { cursorDistanceRange = it }
-        invalidate()
-    }
     
 
 
@@ -425,30 +407,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val headInfluencedCenterX = screenCenterX + (headDirectionX * pointerHeadSensitivity)
             val headInfluencedCenterY = screenCenterY - (headDirectionY * headTiltYBaseSensitivity)
             
-            // 4. Map gaze direction to screen coordinates with range effects
+            // 4. Map gaze direction to screen coordinates
             // Scale the gaze direction by sensitivity and distance factors
-            var gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor
-            var gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor
-            
-            // Apply cursor range effects for better accuracy
-            if (cursorRangeEnabled) {
-                // X position range effect - affects horizontal cursor movement
-                val eyeCenterX = (leftSphere.centerX + rightSphere.centerX) / 2f
-                val screenCenterX = width / 2f
-                val xPositionFactor = (eyeCenterX - screenCenterX) / screenCenterX  // -1 to 1
-                gazeScreenOffsetX += xPositionFactor * cursorXRange * 100f
-                
-                // Y position range effect - affects vertical cursor movement  
-                val eyeCenterY = (leftSphere.centerY + rightSphere.centerY) / 2f
-                val screenCenterY = height / 2f
-                val yPositionFactor = (eyeCenterY - screenCenterY) / screenCenterY  // -1 to 1
-                gazeScreenOffsetY += yPositionFactor * cursorYRange * 100f
-                
-                // Distance range effect - affects both X and Y based on distance from camera
-                val distanceFactor = (distanceScalingFactor - 1f).coerceIn(-1f, 1f)  // Normalize distance scaling
-                gazeScreenOffsetX += distanceFactor * cursorDistanceRange * 50f
-                gazeScreenOffsetY += distanceFactor * cursorDistanceRange * 30f
-            }
+            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor
+            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor
             
             // 5. Calculate gyro influence for stabilization
             val gyroInfluenceX = -gyroVelocityX * pointerGyroSensitivity
@@ -543,10 +505,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(headTiltYText, 20f, 130f, textPaint)
         val fpsText = "FPS: $currentFPS"
         val gazeText = "Gaze: ${if (gazeCurvatureEnabled) "ON" else "OFF"} D${"%.2f".format(gazeCurvatureDownward)} S${"%.2f".format(gazeCurvatureStrength)}"
-        val rangeText = "Range: ${if (cursorRangeEnabled) "ON" else "OFF"} X${"%.2f".format(cursorXRange)} Y${"%.2f".format(cursorYRange)} D${"%.2f".format(cursorDistanceRange)}"
         
         canvas.drawText(fpsText, 20f, 170f, textPaint)
         canvas.drawText(gazeText, 20f, 210f, textPaint)
-        canvas.drawText(rangeText, 20f, 250f, textPaint)
     }
 }
