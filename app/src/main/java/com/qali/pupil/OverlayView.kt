@@ -253,7 +253,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val zScale = 1f + (zOffset / 1000f)
         
         // Small downward adjustment to bring gaze lines up a little (just a few pixels)
-        val adjustedCenterY = centerY + 3f
+        val adjustedCenterY = centerY + 6f
         
         return EyeSphere(centerX, adjustedCenterY, radius, radius * 2f, zScale)
     }
