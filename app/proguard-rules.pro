@@ -26,17 +26,38 @@
 -keep class javax.lang.model.element.** { *; }
 -keep class javax.lang.model.type.** { *; }
 -keep class javax.lang.model.util.** { *; }
+-keep class javax.tools.** { *; }
 
 # Keep AutoValue related classes
 -keep class com.google.auto.value.** { *; }
 -keep class autovalue.shaded.** { *; }
 
-# Keep MediaPipe classes
+# Keep MediaPipe classes and protobuf
 -keep class com.google.mediapipe.** { *; }
 -keep class com.google.protobuf.** { *; }
+-keep class com.google.mediapipe.proto.** { *; }
 
 # Keep CameraX classes
 -keep class androidx.camera.** { *; }
 
 # Keep Compose classes
 -keep class androidx.compose.** { *; }
+
+# Keep all classes that might be referenced by annotation processors
+-keep class * extends javax.annotation.processing.AbstractProcessor { *; }
+-keep class * implements javax.annotation.processing.Processor { *; }
+
+# Keep service files for annotation processors
+-keep class META-INF.services.javax.annotation.processing.Processor { *; }
+
+# Keep all classes with @AutoValue annotation
+-keep @com.google.auto.value.AutoValue class * { *; }
+
+# Keep all classes with @AutoValue.Builder annotation  
+-keep @com.google.auto.value.AutoValue.Builder class * { *; }
+
+# Keep all classes with @Memoized annotation
+-keep @com.google.auto.value.extension.memoized.Memoized class * { *; }
+
+# Keep all classes with @Serializable annotation
+-keep @com.google.auto.value.extension.serializable.Serializable class * { *; }
