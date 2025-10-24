@@ -117,7 +117,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private val headDirectionTargetIndex = 9
 
     // Data classes
-    private data class EyeSphere(val centerX: Float, val centerY: Float, val radius: Float, val scaledRadius: Float = radius * 2f, val zScale: Float = 1f)
+    private data class EyeSphere(val centerX: Float, val centerY: Float, val radius: Float, val scaledRadius: Float = radius, val zScale: Float = 1f)
     private data class GazeLine(val startX: Float, val startY: Float, val endX: Float, val endY: Float)
 
     private val sensorManager: SensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -282,7 +282,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             }
         }
 
-        return EyeSphere(eyeCenterX, eyeCenterY, radius, radius * 2f, radius * 2f)
+        return EyeSphere(eyeCenterX, eyeCenterY, radius, radius, radius)
     }
 
     private fun calculateGazeLine(sphereCenter: Pair<Float, Float>, pupilPoint: Pair<Float, Float>, extensionFactor: Float = 2f): GazeLine {
