@@ -49,8 +49,16 @@ jobs:
     - name: Build Release APK
       run: ./gradlew assembleRelease
 
+    - name: List generated APK files
+      run: |
+        echo "=== APK files in app/build/outputs/apk/ ==="
+        find app/build/outputs/apk/ -name "*.apk" -type f || echo "No APK files found"
+        echo "=== Contents of app/build/outputs/apk/release/ ==="
+        ls -la app/build/outputs/apk/release/ || echo "Release directory not found"
+
     - name: Upload Release APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
         path: app/build/outputs/apk/release/app-release.apk
+        if-no-files-found: warn
