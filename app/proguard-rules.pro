@@ -19,3 +19,24 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep annotation processing classes that are referenced but not available at runtime
+-keep class javax.annotation.processing.** { *; }
+-keep class javax.lang.model.** { *; }
+-keep class javax.lang.model.element.** { *; }
+-keep class javax.lang.model.type.** { *; }
+-keep class javax.lang.model.util.** { *; }
+
+# Keep AutoValue related classes
+-keep class com.google.auto.value.** { *; }
+-keep class autovalue.shaded.** { *; }
+
+# Keep MediaPipe classes
+-keep class com.google.mediapipe.** { *; }
+-keep class com.google.protobuf.** { *; }
+
+# Keep CameraX classes
+-keep class androidx.camera.** { *; }
+
+# Keep Compose classes
+-keep class androidx.compose.** { *; }
