@@ -445,7 +445,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 gazeScreenOffsetY += yPositionFactor * cursorYRange * 100f
                 
                 // Distance range effect - affects both X and Y based on distance from camera
-                val distanceFactor = (zOffset / 1000f).coerceIn(-1f, 1f)  // Normalize distance
+                val distanceFactor = (distanceScalingFactor - 1f).coerceIn(-1f, 1f)  // Normalize distance scaling
                 gazeScreenOffsetX += distanceFactor * cursorDistanceRange * 50f
                 gazeScreenOffsetY += distanceFactor * cursorDistanceRange * 30f
             }
