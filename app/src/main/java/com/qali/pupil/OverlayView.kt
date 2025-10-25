@@ -1319,7 +1319,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val baseAdjustment = 1.0f + (analysis.avgErrorX / 1000f) * 0.1f
             // Apply exponential scaling for stronger correlations
             if (analysis.xPositionCorrelation > 0.7f) {
-                baseAdjustment * pow(1.2f, analysis.xPositionCorrelation)
+                baseAdjustment * 1.2f.pow(analysis.xPositionCorrelation)
             } else {
                 baseAdjustment
             }
@@ -1340,7 +1340,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val distanceAdjustment = if (analysis.distanceCorrelation > 0.3f) {
             val baseAdjustment = 1.0f + (analysis.distanceCorrelation * 0.2f)
             // Apply power scaling for non-linear distance effects
-            pow(baseAdjustment, 1.0f + analysis.distanceCorrelation * 0.5f)
+            baseAdjustment.pow(1.0f + analysis.distanceCorrelation * 0.5f)
         } else 1.0f
         
         // Advanced offset calculations with quadratic scaling
