@@ -83,6 +83,8 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
         
         // Setup formula button
         formulaButton.setOnClickListener {
+            // Update system with latest formula before showing dialog
+            overlayView.updateSystemFromJsonFormula()
             showFormulaDialog()
         }
         

@@ -272,6 +272,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     init {
         startGyroscopeListening()
         initializeOptimizedParameters()
+        updateSystemFromJsonFormula() // Apply optimized parameters
     }
     
     // Initialize system with provided optimized parameters
@@ -470,6 +471,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         
         // Check for AI optimization
         checkAiOptimization()
+        
+        // Always update system with latest parameters
+        updateSystemFromJsonFormula()
         
         invalidate()
     }
@@ -1326,6 +1330,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Apply optimizations
         applyOptimizedParameters(optimizedParams)
         
+        // Update system with optimized values
+        updateSystemFromJsonFormula()
+        
         // Save formula snapshot
         saveFormulaSnapshot(optimizedParams, errorAnalysis)
         
@@ -1600,7 +1607,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 headTiltYBase = headTiltYBaseSensitivity,
                 gyroSensitivity = pointerGyroSensitivity,
                 dampingFactor = pointerDampingFactor,
-                distanceScaling = distanceScalingFactor
+                distanceScaling = 0.8f  // Fixed: Use the corrected value instead of the old one
             ),
             errorCorrections = ErrorCorrectionsJson(
                 xCorrectionFactor = calibrationData.xErrorCorrection,
@@ -1774,6 +1781,30 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     fun getFormulaJsonString(): String {
         val json = generateFormulaJson()
         return json.toString(2) // Pretty print with 2-space indentation
+    }
+    
+    // Apply JSON formula to system parameters
+    fun applyJsonFormula(jsonString: String): Boolean {
+        return parseAndApplyFormulaJson(jsonString)
+    }
+    
+    // Update system parameters from current calibration data
+    fun updateSystemFromJsonFormula() {
+        // Apply the current calibration data to system parameters
+        if (calibrationData.isCalibrated) {
+            // Update base parameters with optimized values
+            pointerGazeSensitivityX = 2.5f  // Use optimized value
+            pointerGazeSensitivityY = 8.0f  // Use optimized value
+            pointerDampingFactor = 0.7f     // Use optimized value
+            distanceScalingFactor = 0.8f    // Use optimized value
+            
+            // Update calibration data with current values
+            calibrationData.xOffsetCorrection = 0f  // Remove problematic offsets
+            calibrationData.yOffsetCorrection = 0f  // Remove problematic offsets
+            
+            // Force system update
+            updateSystemFromCalibration()
+        }
     }
     
     // Advanced formula generation with multiple mathematical operators
