@@ -300,13 +300,13 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         if (!isCalibrating || landmarks.isEmpty()) return
         
         // Get current cursor position
-        val currentCursorX = cursorX
-        val currentCursorY = cursorY
+        val currentCursorX = lastPointerPosition?.first ?: (width / 2f)
+        val currentCursorY = lastPointerPosition?.second ?: (height / 2f)
         
         // Calculate error between tap location and cursor position
         val errorX = tapX - currentCursorX
         val errorY = tapY - currentCursorY
-        val errorMagnitude = sqrt(errorX * errorX + errorY * errorY)
+        val errorMagnitude = sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
         
         // Add tap visualization with error info
         tapVisualizations.add(TapVisualization(tapX, tapY, System.currentTimeMillis()))
