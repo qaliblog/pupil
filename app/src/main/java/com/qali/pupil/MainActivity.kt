@@ -1,9 +1,14 @@
 package com.qali.pupil
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
+import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -13,9 +18,14 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import android.util.Size
 import kotlin.math.abs
-import android.widget.Button
-import android.widget.TextView
 import android.view.View
+import kotlinx.coroutines.*
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.OutputStreamWriter
+import org.json.JSONObject
+import java.io.File
+import java.io.FileWriter
 
 
 class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListener {
@@ -25,7 +35,17 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
     private lateinit var viewFinder: PreviewView
     private lateinit var calibrationButton: Button
     private lateinit var resetButton: Button
+    private lateinit var settingsButton: ImageButton
+    private lateinit var formulaButton: Button
     private lateinit var calibrationStatus: TextView
+    
+    // AI Settings
+    private var geminiApiKey = ""
+    private var geminiModelName = "gemini-1.5-flash"
+    private var aiOptimizationEnabled = false
+    private var debugInfoEnabled = false
+    private var errorThreshold = 20f
+    private var minCalibrationPoints = 5
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +72,16 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
         resetButton.setOnClickListener {
             overlayView.resetCalibration()
             calibrationButton.text = "Start Calibration"
+        }
+        
+        // Setup settings button
+        settingsButton.setOnClickListener {
+            showSettingsDialog()
+        }
+        
+        // Setup formula button
+        formulaButton.setOnClickListener {
+            showFormulaDialog()
         }
         
         // Setup calibration status updates
@@ -230,6 +260,184 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
             return true
         }
         return super.onTouchEvent(event)
+    }
+    
+    private fun showSettingsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
+        
+        val apiKeyInput = dialogView.findViewById<EditText>(R.id.apiKeyInput)
+        val modelNameInput = dialogView.findViewById<EditText>(R.id.modelNameInput)
+        val aiOptimizationToggle = dialogView.findViewById<Switch>(R.id.aiOptimizationToggle)
+        val debugInfoToggle = dialogView.findViewById<Switch>(R.id.debugInfoToggle)
+        val errorThresholdSeekBar = dialogView.findViewById<SeekBar>(R.id.errorThresholdSeekBar)
+        val errorThresholdText = dialogView.findViewById<TextView>(R.id.errorThresholdText)
+        val minPointsSeekBar = dialogView.findViewById<SeekBar>(R.id.minPointsSeekBar)
+        val minPointsText = dialogView.findViewById<TextView>(R.id.minPointsText)
+        val saveButton = dialogView.findViewById<Button>(R.id.saveSettingsButton)
+        val testButton = dialogView.findViewById<Button>(R.id.testConnectionButton)
+        
+        // Set current values
+        apiKeyInput.setText(geminiApiKey)
+        modelNameInput.setText(geminiModelName)
+        aiOptimizationToggle.isChecked = aiOptimizationEnabled
+        debugInfoToggle.isChecked = debugInfoEnabled
+        errorThresholdSeekBar.progress = errorThreshold.toInt()
+        minPointsSeekBar.progress = minCalibrationPoints
+        
+        // Update text displays
+        errorThresholdText.text = "Threshold: ${errorThreshold.toInt()}px"
+        minPointsText.text = "Minimum Points: $minCalibrationPoints"
+        
+        // SeekBar listeners
+        errorThresholdSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                errorThresholdText.text = "Threshold: ${progress}px"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        minPointsSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                minPointsText.text = "Minimum Points: $progress"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .create()
+        
+        saveButton.setOnClickListener {
+            geminiApiKey = apiKeyInput.text.toString()
+            geminiModelName = modelNameInput.text.toString()
+            aiOptimizationEnabled = aiOptimizationToggle.isChecked
+            debugInfoEnabled = debugInfoToggle.isChecked
+            errorThreshold = errorThresholdSeekBar.progress.toFloat()
+            minCalibrationPoints = minPointsSeekBar.progress
+            
+            overlayView.setDebugInfoEnabled(debugInfoEnabled)
+            overlayView.setAiOptimizationEnabled(aiOptimizationEnabled, geminiApiKey, geminiModelName)
+            
+            Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
+        }
+        
+        testButton.setOnClickListener {
+            testGeminiConnection()
+        }
+        
+        dialog.show()
+    }
+    
+    private fun showFormulaDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_formula, null)
+        
+        val baseParametersText = dialogView.findViewById<TextView>(R.id.baseParametersText)
+        val errorCorrectionsText = dialogView.findViewById<TextView>(R.id.errorCorrectionsText)
+        val aiFormulaText = dialogView.findViewById<TextView>(R.id.aiFormulaText)
+        val calibrationDataText = dialogView.findViewById<TextView>(R.id.calibrationDataText)
+        val copyButton = dialogView.findViewById<Button>(R.id.copyFormulaButton)
+        val exportButton = dialogView.findViewById<Button>(R.id.exportFormulaButton)
+        
+        // Get formula data from overlay view
+        val formulaData = overlayView.getFormulaData()
+        
+        baseParametersText.text = formulaData.baseParameters
+        errorCorrectionsText.text = formulaData.errorCorrections
+        aiFormulaText.text = formulaData.aiFormula
+        calibrationDataText.text = formulaData.calibrationData
+        
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Formula Configuration")
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .create()
+        
+        copyButton.setOnClickListener {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Formula", formulaData.fullFormula)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Formula copied to clipboard", Toast.LENGTH_SHORT).show()
+        }
+        
+        exportButton.setOnClickListener {
+            exportFormulaToFile(formulaData.fullFormula)
+        }
+        
+        dialog.show()
+    }
+    
+    private fun testGeminiConnection() {
+        if (geminiApiKey.isEmpty()) {
+            Toast.makeText(this, "Please enter API key first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        Toast.makeText(this, "Testing connection...", Toast.LENGTH_SHORT).show()
+        
+        // Test connection in background
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val success = testGeminiApi(geminiApiKey, geminiModelName)
+                withContext(Dispatchers.Main) {
+                    if (success) {
+                        Toast.makeText(this@MainActivity, "Connection successful!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Connection failed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    private suspend fun testGeminiApi(apiKey: String, modelName: String): Boolean {
+        return try {
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+            
+            val jsonInput = JSONObject().apply {
+                put("contents", JSONObject().apply {
+                    put("parts", JSONObject().apply {
+                        put("text", "Hello, this is a test message.")
+                    })
+                })
+            }
+            
+            val outputStream = connection.outputStream
+            val writer = OutputStreamWriter(outputStream)
+            writer.write(jsonInput.toString())
+            writer.flush()
+            writer.close()
+            
+            val responseCode = connection.responseCode
+            connection.disconnect()
+            
+            responseCode == 200
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    private fun exportFormulaToFile(formula: String) {
+        try {
+            val file = File(getExternalFilesDir(null), "pupil_formula_${System.currentTimeMillis()}.txt")
+            val writer = FileWriter(file)
+            writer.write(formula)
+            writer.close()
+            Toast.makeText(this, "Formula exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     companion object {

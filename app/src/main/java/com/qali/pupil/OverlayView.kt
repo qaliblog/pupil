@@ -62,6 +62,16 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var calibrationClickCount = 0
     private val maxCalibrationPoints = 1000 // Increased capacity
     
+    // AI Integration
+    private var aiOptimizationEnabled = false
+    private var geminiApiKey = ""
+    private var geminiModelName = "gemini-1.5-flash"
+    private var debugInfoEnabled = false
+    private var errorThreshold = 20f
+    private var minCalibrationPoints = 5
+    private var aiOptimizedFormula = ""
+    private var lastAiOptimizationTime = 0L
+    
     // Calibration data classes
     private data class CalibrationPoint(
         val tapX: Float,
@@ -349,6 +359,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         if (calibrationClickCount % 20 == 0) {
             updateFormulasFromCalibration()
         }
+        
+        // Check for AI optimization
+        checkAiOptimization()
         
         invalidate()
     }
@@ -1036,6 +1049,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             canvas.drawText(errorOffsetText, 20f, 530f, textPaint)
             canvas.drawText(avgErrorText, 20f, 570f, textPaint)
         }
+        
+        // Debug information
+        if (debugInfoEnabled) {
+            drawDebugInformation(canvas)
+        }
     }
     
     
@@ -1058,5 +1076,179 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         } else {
             "No calibration data"
         }
+    }
+    
+    // Debug information display
+    private fun drawDebugInformation(canvas: Canvas) {
+        val debugPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 12f
+            style = Paint.Style.FILL
+            isAntiAlias = true
+            setShadowLayer(2f, 0f, 0f, Color.BLACK)
+        }
+        
+        var yOffset = 650f
+        
+        // Eye position information
+        if (landmarks.isNotEmpty()) {
+            val leftSphere = calculateEyeSphere(
+                sphereLeftEyeIndices.mapNotNull { landmarks.getOrNull(it) },
+                leftEyeX, leftEyeY, leftEyeZ, 0f, 0f, false
+            )
+            val rightSphere = calculateEyeSphere(
+                sphereRightEyeIndices.mapNotNull { landmarks.getOrNull(it) },
+                rightEyeX, rightEyeY, rightEyeZ, 0f, 0f, true
+            )
+            
+            val avgEyeX = (leftSphere.centerX + rightSphere.centerX) / 2f
+            val avgEyeY = (leftSphere.centerY + rightSphere.centerY) / 2f
+            val avgSphereSize = (leftSphere.radius + rightSphere.radius) / 2f
+            
+            canvas.drawText("Eye Position: X=${"%.1f".format(avgEyeX)}, Y=${"%.1f".format(avgEyeY)}", 20f, yOffset, debugPaint)
+            yOffset += 20f
+            canvas.drawText("Eye Distance: ${"%.1f".format(avgSphereSize)}", 20f, yOffset, debugPaint)
+            yOffset += 20f
+            
+            // Head direction
+            headDirectionTarget?.let {
+                val averageFacePoint = calculateWeightedAveragePoint(headDirectionPoints, averageFaceWeightYOffset)
+                val (dirX, dirY, magnitude) = calculateHeadDirection(averageFacePoint, it)
+                canvas.drawText("Head Direction: X=${"%.2f".format(dirX)}, Y=${"%.2f".format(dirY)}", 20f, yOffset, debugPaint)
+                yOffset += 20f
+            }
+            
+            // Current error if calibrating
+            if (isCalibrating && calibrationPoints.isNotEmpty()) {
+                val lastPoint = calibrationPoints.last()
+                canvas.drawText("Last Error: X=${"%.1f".format(lastPoint.errorX)}, Y=${"%.1f".format(lastPoint.errorY)}", 20f, yOffset, debugPaint)
+                yOffset += 20f
+                canvas.drawText("Error Magnitude: ${"%.1f".format(lastPoint.errorMagnitude)}px", 20f, yOffset, debugPaint)
+                yOffset += 20f
+            }
+            
+            // AI optimization status
+            if (aiOptimizationEnabled) {
+                canvas.drawText("AI Optimization: ENABLED", 20f, yOffset, debugPaint)
+                yOffset += 20f
+                if (aiOptimizedFormula.isNotEmpty()) {
+                    canvas.drawText("Last AI Update: ${(System.currentTimeMillis() - lastAiOptimizationTime) / 1000}s ago", 20f, yOffset, debugPaint)
+                    yOffset += 20f
+                }
+            }
+        }
+    }
+    
+    // AI optimization methods
+    fun setDebugInfoEnabled(enabled: Boolean) {
+        debugInfoEnabled = enabled
+        invalidate()
+    }
+    
+    fun setAiOptimizationEnabled(enabled: Boolean, apiKey: String, modelName: String) {
+        aiOptimizationEnabled = enabled
+        geminiApiKey = apiKey
+        geminiModelName = modelName
+    }
+    
+    // Check if AI optimization should be triggered
+    private fun checkAiOptimization() {
+        if (!aiOptimizationEnabled || geminiApiKey.isEmpty()) return
+        if (!isCalibrating) return
+        if (calibrationPoints.size < minCalibrationPoints) return
+        
+        // Check if we have enough high-error points
+        val highErrorPoints = calibrationPoints.filter { it.errorMagnitude > errorThreshold }
+        if (highErrorPoints.size >= 5) {
+            // Trigger AI optimization
+            optimizeFormulaWithAI()
+        }
+    }
+    
+    private fun optimizeFormulaWithAI() {
+        // This would integrate with Gemini API to optimize formulas
+        // For now, we'll just mark that AI optimization was attempted
+        lastAiOptimizationTime = System.currentTimeMillis()
+        aiOptimizedFormula = "AI optimization triggered at ${lastAiOptimizationTime}"
+        
+        // In a real implementation, this would:
+        // 1. Collect error data and current formula parameters
+        // 2. Send to Gemini API with optimization prompt
+        // 3. Receive optimized parameters
+        // 4. Apply the new parameters
+    }
+    
+    // Formula data for display
+    data class FormulaData(
+        val baseParameters: String,
+        val errorCorrections: String,
+        val aiFormula: String,
+        val calibrationData: String,
+        val fullFormula: String
+    )
+    
+    fun getFormulaData(): FormulaData {
+        val baseParams = """
+            Base Parameters:
+            - Gaze Sensitivity X: $pointerGazeSensitivityX
+            - Gaze Sensitivity Y: $pointerGazeSensitivityY
+            - Head Sensitivity: $pointerHeadSensitivity
+            - Head Tilt Y Base: $headTiltYBaseSensitivity
+            - Gyro Sensitivity: $pointerGyroSensitivity
+            - Damping Factor: $pointerDampingFactor
+            - Distance Scaling: $distanceScalingFactor
+        """.trimIndent()
+        
+        val errorCorrections = if (calibrationData.isCalibrated) {
+            """
+            Error Corrections:
+            - X Correction Factor: ${calibrationData.xErrorCorrection}
+            - Y Correction Factor: ${calibrationData.yErrorCorrection}
+            - X Offset: ${calibrationData.xOffsetCorrection}
+            - Y Offset: ${calibrationData.yOffsetCorrection}
+            - Average Error: ${calibrationData.avgErrorMagnitude}px
+            - Click Count: ${calibrationData.clickCount}
+            """.trimIndent()
+        } else {
+            "No error corrections applied"
+        }
+        
+        val aiFormula = if (aiOptimizedFormula.isNotEmpty()) {
+            aiOptimizedFormula
+        } else {
+            "No AI optimization applied"
+        }
+        
+        val calibData = if (calibrationData.isCalibrated) {
+            """
+            Calibration Data:
+            - Points Collected: ${calibrationPoints.size}
+            - Eye Y Range: ${calibrationData.avgEyeYMin} - ${calibrationData.avgEyeYMax}
+            - Sphere Size Range: ${calibrationData.avgSphereSizeMin} - ${calibrationData.avgSphereSizeMax}
+            - Y Position Influence: ${calibrationData.avgYPositionInfluence}
+            - Distance Range: ${calibrationData.avgDistanceRange}
+            - Gaze Sensitivity: ${calibrationData.avgGazeSensitivity}
+            """.trimIndent()
+        } else {
+            "No calibration data available"
+        }
+        
+        val fullFormula = """
+            PUPIL CURSOR CONTROL FORMULA
+            ===========================
+            
+            $baseParams
+            
+            $errorCorrections
+            
+            AI Optimization:
+            $aiFormula
+            
+            $calibData
+            
+            Generated: ${System.currentTimeMillis()}
+        """.trimIndent()
+        
+        return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula)
     }
 }
