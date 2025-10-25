@@ -599,10 +599,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(gazeText, 20f, 210f, textPaint)
         
         // Enhanced debug information
-        val distanceRangeText = "Distance Range: ${\"%.2f\".format(calculateDistanceRange((leftSphere.radius + rightSphere.radius) / 2f))}"
-        val gazeVelocityText = "Gaze Velocity: ${\"%.2f\".format(gazeTipVelocity)}"
-        val adaptiveSensText = "Adaptive Sens: ${\"%.2f\".format(adaptiveSensitivity)}"
-        val eyeYInfluenceText = "Eye Y Influence: ${\"%.2f\".format(calculateYPositionInfluence((leftSphere.centerY + rightSphere.centerY) / 2f, height.toFloat()))}"
+        val distanceRangeText = "Distance Range: ${"%.2f".format(calculateDistanceRange((leftSphere.radius + rightSphere.radius) / 2f))}"
+        val gazeVelocityText = "Gaze Velocity: ${"%.2f".format(gazeTipVelocity)}"
+        val adaptiveSensText = "Adaptive Sens: ${"%.2f".format(adaptiveSensitivity)}"
+        val eyeYInfluenceText = "Eye Y Influence: ${"%.2f".format(calculateYPositionInfluence((leftSphere.centerY + rightSphere.centerY) / 2f, height.toFloat()))}"
         
         canvas.drawText(distanceRangeText, 20f, 250f, textPaint)
         canvas.drawText(gazeVelocityText, 20f, 290f, textPaint)
