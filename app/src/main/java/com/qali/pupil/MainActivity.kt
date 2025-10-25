@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
     private lateinit var overlayView: OverlayView
     private lateinit var viewFinder: PreviewView
     private lateinit var calibrationButton: Button
+    private lateinit var resetButton: Button
     private lateinit var calibrationStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
         overlayView = findViewById(R.id.overlay_view)
         viewFinder = findViewById(R.id.viewFinder)
         calibrationButton = findViewById(R.id.calibrationButton)
+        resetButton = findViewById(R.id.resetButton)
         calibrationStatus = findViewById(R.id.calibrationStatus)
         
         // Setup calibration button
@@ -44,6 +46,12 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
                 overlayView.startCalibration()
                 calibrationButton.text = "Stop Calibration"
             }
+        }
+        
+        // Setup reset button
+        resetButton.setOnClickListener {
+            overlayView.resetCalibration()
+            calibrationButton.text = "Start Calibration"
         }
         
         // Setup calibration status updates

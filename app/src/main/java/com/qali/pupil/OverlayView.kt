@@ -15,9 +15,7 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
-import kotlin.math.sqrt
 import java.io.*
-import kotlin.math.*
 import java.io.Serializable
 
 class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs), SensorEventListener {
@@ -62,8 +60,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var tapVisualizations = mutableListOf<TapVisualization>()
     private var calibrationData = CalibrationData()
     private var calibrationClickCount = 0
-    private val maxCalibrationPoints = 20
-    private val outlierThreshold = 2.0f // Standard deviations for outlier detection
+    private val maxCalibrationPoints = 1000 // Increased capacity
     
     // Calibration data classes
     private data class CalibrationPoint(
@@ -326,48 +323,45 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         
         calibrationClickCount++
         
-        // Clean data and update formulas every 20 clicks
+        // Update formulas every 20 clicks (no data cleaning)
         if (calibrationClickCount % 20 == 0) {
-            cleanCalibrationData()
             updateFormulasFromCalibration()
         }
         
         invalidate()
     }
     
-    private fun cleanCalibrationData() {
-        if (calibrationPoints.size < 10) return // Need minimum data
+    // Reset calibration data
+    fun resetCalibration() {
+        calibrationPoints.clear()
+        tapVisualizations.clear()
+        calibrationClickCount = 0
+        calibrationData = CalibrationData()
+        isCalibrating = false
         
-        // Remove outliers using statistical analysis
-        val yInfluences = calibrationPoints.map { it.yPositionInfluence }
-        val distanceRanges = calibrationPoints.map { it.distanceRange }
-        val gazeSensitivities = calibrationPoints.map { it.adaptiveSensitivity }
+        // Reset to default values
+        minSphereSize = 15f
+        maxSphereSize = 45f
+        typicalEyeMinYRatio = 0.4f
+        typicalEyeMaxYRatio = 0.9f
         
-        val yMean = yInfluences.average()
-        val yStd = sqrt(yInfluences.map { (it - yMean).pow(2) }.average())
-        val distanceMean = distanceRanges.average()
-        val distanceStd = sqrt(distanceRanges.map { (it - distanceMean).pow(2) }.average())
-        val gazeMean = gazeSensitivities.average()
-        val gazeStd = sqrt(gazeSensitivities.map { (it - gazeMean).pow(2) }.average())
-        
-        // Remove outliers (beyond 2 standard deviations)
-        calibrationPoints.removeAll { point ->
-            val yOutlier = abs(point.yPositionInfluence - yMean) > outlierThreshold * yStd
-            val distanceOutlier = abs(point.distanceRange - distanceMean) > outlierThreshold * distanceStd
-            val gazeOutlier = abs(point.adaptiveSensitivity - gazeMean) > outlierThreshold * gazeStd
-            yOutlier || distanceOutlier || gazeOutlier
+        // Clear saved data
+        try {
+            val file = File(context.filesDir, "calibration_data.dat")
+            if (file.exists()) {
+                file.delete()
+            }
+        } catch (e: Exception) {
+            // Handle error silently
         }
         
-        // Keep only the most recent 15 points after cleaning
-        if (calibrationPoints.size > 15) {
-            calibrationPoints = calibrationPoints.takeLast(15).toMutableList()
-        }
+        invalidate()
     }
     
     private fun updateFormulasFromCalibration() {
         if (calibrationPoints.isEmpty()) return
         
-        // Calculate averages from cleaned data
+        // Calculate averages from all data (no cleaning)
         calibrationData.avgYPositionInfluence = calibrationPoints.map { it.yPositionInfluence }.average().toFloat()
         calibrationData.avgDistanceRange = calibrationPoints.map { it.distanceRange }.average().toFloat()
         calibrationData.avgGazeSensitivity = calibrationPoints.map { it.adaptiveSensitivity }.average().toFloat()
@@ -950,10 +944,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(calibrationInfoText, 20f, 450f, textPaint)
     }
     
-    // Handle calibration tap with coordinates
-    fun handleCalibrationTap(tapX: Float, tapY: Float) {
-        handleCalibrationTap(tapX, tapY)
-    }
     
     // Get calibration status for UI
     fun getCalibrationStatus(): String {
