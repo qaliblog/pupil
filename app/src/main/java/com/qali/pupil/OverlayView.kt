@@ -40,7 +40,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var rightEyeX = 0f
     var rightEyeY = -17f
     var rightEyeZ = 0f
-    private var distanceScalingFactor = 1.2f  // Reduced from 171792.53f
+    private var distanceScalingFactor = 0.8f  // Further reduced for better control
     private val neutralFaceDepth = 300.0f
     
     // Enhanced cursor control variables
@@ -75,6 +75,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var minCalibrationPoints = 5
     private var aiOptimizedFormula = ""
     private var lastAiOptimizationTime = 0L
+    private var isAiPrompting = false
+    private var aiPromptingStartTime = 0L
     
     // Formula History
     private var formulaHistory = mutableListOf<FormulaSnapshot>()
@@ -122,8 +124,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Error correction factors
         var xErrorCorrection: Float = 1.0662434f,
         var yErrorCorrection: Float = 0.94424844f,
-        var xOffsetCorrection: Float = -773.04565f,
-        var yOffsetCorrection: Float = 4377.0664f,
+        var xOffsetCorrection: Float = 0f,  // Fixed: was causing cursor jumping
+        var yOffsetCorrection: Float = 0f,  // Fixed: was causing cursor to always stay down
         var avgErrorMagnitude: Float = 873.8477f
     ) : Serializable
 
@@ -237,8 +239,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             clickCount = 340,  // From latest data
             xErrorCorrection = 1.0467837f,  // From latest data
             yErrorCorrection = 0.67287123f,  // From latest data
-            xOffsetCorrection = -356.44504f,  // From latest data
-            yOffsetCorrection = 3615.3335f,  // From latest data
+            xOffsetCorrection = 0f,  // Fixed: was causing cursor jumping
+            yOffsetCorrection = 0f,  // Fixed: was causing cursor to always stay down
             avgErrorMagnitude = 1724.7052f  // From latest data
         )
         
@@ -603,8 +605,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     // Calculate normalized eye position (0-1) within typical range
     private fun calculateNormalizedEyePosition(eyeY: Float, screenHeight: Float): Float {
         // Use full screen range for better upward gaze detection
-        val minY = screenHeight * 0.1f  // Top 10% of screen
-        val maxY = screenHeight * 0.9f  // Bottom 10% of screen
+        val minY = screenHeight * 0.05f  // Top 5% of screen
+        val maxY = screenHeight * 0.95f  // Bottom 5% of screen
         val eyeRange = maxY - minY
         
         return ((eyeY - minY) / eyeRange).coerceIn(0f, 1f)
@@ -627,13 +629,13 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private fun calculateYPositionInfluence(eyeY: Float, screenHeight: Float): Float {
         val normalizedEyeY = calculateNormalizedEyePosition(eyeY, screenHeight)
         
-        // Map to -2 to +2 range for stronger cursor influence
-        val yInfluence = (normalizedEyeY - 0.5f) * 4f
+        // Map to -3 to +3 range for stronger cursor influence
+        val yInfluence = (normalizedEyeY - 0.5f) * 6f
         
         // Apply enhanced scaling for better upward movement
-        val scaledInfluence = yInfluence * (1.5f + abs(yInfluence) * 0.5f)
+        val scaledInfluence = yInfluence * (2f + abs(yInfluence) * 0.3f)
         
-        return scaledInfluence.coerceIn(-2f, 2f)
+        return scaledInfluence.coerceIn(-3f, 3f)
     }
     
     // Calculate eye Y velocity for adaptive control
@@ -958,13 +960,13 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val headInfluencedCenterX = screenCenterX + (headDirectionX * pointerHeadSensitivity)
             val headInfluencedCenterY = screenCenterY - (headDirectionY * headTiltYBaseSensitivity)
             
-            // 8. Map gaze direction to screen coordinates with enhanced scaling
-            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor * adaptiveSensitivity * distanceRange
-            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor * adaptiveSensitivity * distanceRange
+            // 8. Map gaze direction to screen coordinates with controlled scaling
+            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * adaptiveSensitivity * (1f + distanceRange * 0.1f)
+            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * adaptiveSensitivity * (1f + distanceRange * 0.1f)
             
             // 9. Apply eye Y position influence with improved calculation
             val yPositionInfluence = calculateYPositionInfluence(averageEyeY, height.toFloat())
-            val yPositionOffset = yPositionInfluence * 80f // Increased multiplier for better upward movement
+            val yPositionOffset = yPositionInfluence * 120f // Further increased for better upward movement
             
             // 10. Calculate gyro influence for stabilization
             val gyroInfluenceX = -gyroVelocityX * pointerGyroSensitivity
@@ -976,15 +978,15 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             
             // 12. Apply enhanced error correction with provided optimized values
             val correctedTargetX = if (calibrationData.isCalibrated) {
-                // Apply multiplicative correction factor and additive offset
-                (targetX * calibrationData.xErrorCorrection) + calibrationData.xOffsetCorrection
+                // Apply only multiplicative correction factor, no offset to prevent jumping
+                targetX * calibrationData.xErrorCorrection
             } else {
                 targetX
             }
             
             val correctedTargetY = if (calibrationData.isCalibrated) {
-                // Apply multiplicative correction factor and additive offset
-                (targetY * calibrationData.yErrorCorrection) + calibrationData.yOffsetCorrection
+                // Apply only multiplicative correction factor, no offset to prevent downward bias
+                targetY * calibrationData.yErrorCorrection
             } else {
                 targetY
             }
@@ -1102,6 +1104,18 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Calibration data info
         val calibrationInfoText = getCalibrationDataInfo()
         canvas.drawText(calibrationInfoText, 20f, 450f, textPaint)
+        
+        // AI prompting message
+        if (isAiPrompting) {
+            val promptingTime = (System.currentTimeMillis() - aiPromptingStartTime) / 1000f
+            val aiPromptingText = "🤖 AI is analyzing your data and generating new formula... (${promptingTime.toInt()}s)\nPlease wait and avoid clicking too much during optimization."
+            val aiPromptingPaint = Paint().apply {
+                color = Color.YELLOW
+                textSize = 24f
+                isFakeBoldText = true
+            }
+            canvas.drawText(aiPromptingText, 20f, 490f, aiPromptingPaint)
+        }
         
         // Error correction info
         if (calibrationData.isCalibrated) {
@@ -1232,11 +1246,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     }
     
     private fun optimizeFormulaWithAI() {
+        // Show AI prompting message
+        isAiPrompting = true
+        aiPromptingStartTime = System.currentTimeMillis()
         lastAiOptimizationTime = System.currentTimeMillis()
         
         // Get last 100 data points for analysis
         val recentPoints = calibrationPoints.takeLast(100)
-        if (recentPoints.size < 10) return
+        if (recentPoints.size < 10) {
+            isAiPrompting = false
+            return
+        }
         
         // Analyze error patterns
         val errorAnalysis = analyzeErrorPatterns(recentPoints)
