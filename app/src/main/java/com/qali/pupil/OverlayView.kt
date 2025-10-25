@@ -304,6 +304,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val currentCursorY = lastPointerPosition?.second ?: (height / 2f)
         
         // Calculate error between tap location and cursor position
+        // Positive error means cursor needs to move right/up to reach tap
         val errorX = tapX - currentCursorX
         val errorY = tapY - currentCursorY
         val errorMagnitude = sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
@@ -392,23 +393,23 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val avgErrorY = calibrationPoints.map { it.errorY }.average().toFloat()
         calibrationData.avgErrorMagnitude = calibrationPoints.map { it.errorMagnitude }.average().toFloat()
         
-        // Calculate error correction factors (inverse of average error)
+        // Calculate error correction factors (correct direction)
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
         
-        // X correction: if cursor is consistently off to the right, reduce X sensitivity
+        // X correction: if cursor is consistently off to the right, increase X sensitivity
         calibrationData.xErrorCorrection = if (avgErrorX != 0f) {
-            (1.0f - (avgErrorX / screenWidth) * 0.5f).coerceIn(0.5f, 1.5f)
+            (1.0f + (avgErrorX / screenWidth) * 0.5f).coerceIn(0.5f, 1.5f)
         } else 1.0f
         
         // Y correction: if cursor is consistently off vertically, adjust Y sensitivity
         calibrationData.yErrorCorrection = if (avgErrorY != 0f) {
-            (1.0f - (avgErrorY / screenHeight) * 0.5f).coerceIn(0.5f, 1.5f)
+            (1.0f + (avgErrorY / screenHeight) * 0.5f).coerceIn(0.5f, 1.5f)
         } else 1.0f
         
-        // Offset corrections: adjust base cursor position
-        calibrationData.xOffsetCorrection = -avgErrorX * 0.3f
-        calibrationData.yOffsetCorrection = -avgErrorY * 0.3f
+        // Offset corrections: adjust base cursor position (correct direction)
+        calibrationData.xOffsetCorrection = avgErrorX * 0.3f
+        calibrationData.yOffsetCorrection = avgErrorY * 0.3f
         
         // Update eye Y ranges
         val eyeYs = calibrationPoints.map { it.averageEyeY }
@@ -900,13 +901,13 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             
             // 12. Apply error correction if calibrated
             val correctedTargetX = if (calibrationData.isCalibrated) {
-                (targetX * calibrationData.xErrorCorrection) + calibrationData.xOffsetCorrection
+                (targetX * calibrationData.xErrorCorrection) - calibrationData.xOffsetCorrection
             } else {
                 targetX
             }
             
             val correctedTargetY = if (calibrationData.isCalibrated) {
-                (targetY * calibrationData.yErrorCorrection) + calibrationData.yOffsetCorrection
+                (targetY * calibrationData.yErrorCorrection) - calibrationData.yOffsetCorrection
             } else {
                 targetY
             }
