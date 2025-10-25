@@ -1111,6 +1111,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             yOffset += 20f
             
             // Head direction
+            val headDirectionPoints = headDirectionIndices.mapNotNull { landmarks.getOrNull(it) }
+            val headDirectionTarget = landmarks.getOrNull(headDirectionTargetIndex)
             headDirectionTarget?.let {
                 val averageFacePoint = calculateWeightedAveragePoint(headDirectionPoints, averageFaceWeightYOffset)
                 val (dirX, dirY, magnitude) = calculateHeadDirection(averageFacePoint, it)
