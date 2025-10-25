@@ -1621,7 +1621,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             aiOptimization = AiOptimizationJson(
                 completedAt = lastAiOptimizationTime,
                 optimizedPoints = calibrationPoints.takeLast(100).size,
-                errorReduction = if (formulaHistory.isNotEmpty()) formulaHistory.last().errorReduction else 0f,
+                errorReduction = if (formulaHistory.isNotEmpty()) formulaHistory.last().performance["errorReduction"] ?: 0f else 0f,
                 status = if (isAiPrompting) "Processing..." else "Completed"
             ),
             formulaVariations = generateFormulaVariations()
@@ -1922,16 +1922,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val jsonFormula = getFormulaJsonString()
         
         // Also generate the old text format for backward compatibility
-        val baseParams = """
-            Base Parameters:
-            - Gaze Sensitivity X: $pointerGazeSensitivityX
-            - Gaze Sensitivity Y: $pointerGazeSensitivityY
-            - Head Sensitivity: $pointerHeadSensitivity
-            - Head Tilt Y Base: $headTiltYBaseSensitivity
-            - Gyro Sensitivity: $pointerGyroSensitivity
-            - Damping Factor: $pointerDampingFactor
-            - Distance Scaling: $distanceScalingFactor
-        """.trimIndent()
         val baseParams = """
             Base Parameters:
             - Gaze Sensitivity X: $pointerGazeSensitivityX
