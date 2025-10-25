@@ -36,6 +36,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var rightEyeZ = 0f
     private var distanceScalingFactor = 1.0f
     private val neutralFaceDepth = 300.0f
+    
+    // Enhanced cursor control variables
+    private var lastGazeTipX = 0f
+    private var lastGazeTipY = 0f
+    private var gazeTipVelocity = 0f
+    private var gazeTipChangeThreshold = 5f
+    private var minSphereSize = 20f
+    private var maxSphereSize = 60f
+    private var adaptiveSensitivity = 1.0f
+    private var lastEyeYPosition = 0f
+    private var eyeYVelocity = 0f
 
     // Static offsets for the pointer
     var staticX = 0f
@@ -190,6 +201,18 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
+    fun updateEnhancedCursorControls(
+        gazeTipChangeThreshold: Float? = null,
+        minSphereSize: Float? = null,
+        maxSphereSize: Float? = null,
+        yPositionMultiplier: Float? = null
+    ) {
+        gazeTipChangeThreshold?.let { this.gazeTipChangeThreshold = it }
+        minSphereSize?.let { this.minSphereSize = it }
+        maxSphereSize?.let { this.maxSphereSize = it }
+        invalidate()
+    }
+    
     
     
 
@@ -236,6 +259,53 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private fun updateDistanceScaling() {
         val averageZ = (leftEyeZ + rightEyeZ) / 2.0f
         distanceScalingFactor = (neutralFaceDepth / (averageZ + neutralFaceDepth)).coerceIn(0.5f, 2.0f)
+    }
+    
+    // Enhanced distance ranging function (1-3 range)
+    private fun calculateDistanceRange(sphereSize: Float): Float {
+        val normalizedSize = (sphereSize - minSphereSize) / (maxSphereSize - minSphereSize)
+        return 1f + (normalizedSize * 2f).coerceIn(0f, 2f) // Range: 1-3
+    }
+    
+    // Calculate gaze line tip change for better starting point detection
+    private fun calculateGazeTipChange(currentGazeX: Float, currentGazeY: Float): Float {
+        val deltaX = currentGazeX - lastGazeTipX
+        val deltaY = currentGazeY - lastGazeTipY
+        val velocity = sqrt(deltaX * deltaX + deltaY * deltaY)
+        
+        lastGazeTipX = currentGazeX
+        lastGazeTipY = currentGazeY
+        gazeTipVelocity = velocity
+        
+        return velocity
+    }
+    
+    // Calculate Y position influence based on eye position relative to screen
+    private fun calculateYPositionInfluence(eyeY: Float, screenHeight: Float): Float {
+        val screenCenterY = screenHeight / 2f
+        val eyeOffsetFromCenter = (eyeY - screenCenterY) / screenCenterY
+        return eyeOffsetFromCenter * 0.5f // Adjust multiplier as needed
+    }
+    
+    // Calculate eye Y velocity for adaptive control
+    private fun calculateEyeYVelocity(currentEyeY: Float): Float {
+        val deltaY = currentEyeY - lastEyeYPosition
+        lastEyeYPosition = currentEyeY
+        eyeYVelocity = deltaY
+        return deltaY
+    }
+    
+    // Adaptive sensitivity based on user behavior
+    private fun calculateAdaptiveSensitivity(gazeVelocity: Float, eyeYVelocity: Float): Float {
+        val baseSensitivity = 1.0f
+        
+        // Increase sensitivity when user is making deliberate movements
+        val movementFactor = if (gazeVelocity > gazeTipChangeThreshold) 1.2f else 0.8f
+        
+        // Adjust based on eye Y movement (head tilting)
+        val headTiltFactor = if (abs(eyeYVelocity) > 2f) 1.1f else 1.0f
+        
+        return baseSensitivity * movementFactor * headTiltFactor
     }
 
     private fun adjustPosition(point: Pair<Float, Float>, xOffset: Float, yOffset: Float, zOffset: Float): Pair<Float, Float> {
@@ -396,35 +466,49 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 canvas.drawLine(averageFacePoint.first, averageFacePoint.second, it.first + dirX * 2, it.second + dirY * 2, headVectorPaint)
             }
 
-            // --- CORRECTED POINTER LOCATION LOGIC ---
+            // --- ENHANCED POINTER LOCATION LOGIC ---
 
             // 1. Calculate the actual gaze direction vector from the average gaze point
-            // This represents where the user is actually looking in 3D space
             val gazeDirectionX = averageGazeX - ((leftSphere.centerX + rightSphere.centerX) / 2f)
             val gazeDirectionY = averageGazeY - ((leftSphere.centerY + rightSphere.centerY) / 2f)
             
-            // 2. Calculate the screen center as the base reference point
+            // 2. Calculate gaze tip change for adaptive control
+            val gazeTipVelocity = calculateGazeTipChange(averageGazeX, averageGazeY)
+            
+            // 3. Calculate eye Y position influence
+            val averageEyeY = (leftSphere.centerY + rightSphere.centerY) / 2f
+            val eyeYInfluence = calculateYPositionInfluence(averageEyeY, height.toFloat())
+            val eyeYVelocity = calculateEyeYVelocity(averageEyeY)
+            
+            // 4. Calculate adaptive sensitivity based on user behavior
+            adaptiveSensitivity = calculateAdaptiveSensitivity(gazeTipVelocity, eyeYVelocity)
+            
+            // 5. Calculate distance range (1-3) based on sphere size
+            val averageSphereSize = (leftSphere.radius + rightSphere.radius) / 2f
+            val distanceRange = calculateDistanceRange(averageSphereSize)
+            
+            // 6. Calculate the screen center as the base reference point
             val screenCenterX = width / 2f + staticX
             val screenCenterY = height / 2f + staticY
             
-            // 3. Apply head direction influence to the screen center
-            // This creates a dynamic reference point that follows head movement
+            // 7. Apply head direction influence to the screen center
             val headInfluencedCenterX = screenCenterX + (headDirectionX * pointerHeadSensitivity)
             val headInfluencedCenterY = screenCenterY - (headDirectionY * headTiltYBaseSensitivity)
             
-            // 4. Map gaze direction to screen coordinates
-            // Scale the gaze direction by sensitivity and distance factors
-            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor
-            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor
+            // 8. Map gaze direction to screen coordinates with enhanced scaling
+            val gazeScreenOffsetX = gazeDirectionX * pointerGazeSensitivityX * distanceScalingFactor * adaptiveSensitivity * distanceRange
+            val gazeScreenOffsetY = gazeDirectionY * pointerGazeSensitivityY * distanceScalingFactor * adaptiveSensitivity * distanceRange
             
-            // 5. Calculate gyro influence for stabilization
+            // 9. Apply eye Y position influence
+            val yPositionOffset = eyeYInfluence * 50f // Adjust multiplier as needed
+            
+            // 10. Calculate gyro influence for stabilization
             val gyroInfluenceX = -gyroVelocityX * pointerGyroSensitivity
             val gyroInfluenceY = -gyroVelocityY * pointerGyroSensitivity
 
-            // 6. Calculate the final target position
-            // Start from head-influenced center, add gaze offset, and apply gyro stabilization
+            // 11. Calculate the final target position
             val targetX = headInfluencedCenterX + gazeScreenOffsetX + gyroInfluenceX
-            val targetY = headInfluencedCenterY + gazeScreenOffsetY + gyroInfluenceY
+            val targetY = headInfluencedCenterY + gazeScreenOffsetY + gyroInfluenceY + yPositionOffset
             
             // 5. Apply Damping for Smooth Motion.
             val previousPosition = lastPointerPosition ?: Pair(targetX, targetY)
@@ -513,5 +597,16 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         
         canvas.drawText(fpsText, 20f, 170f, textPaint)
         canvas.drawText(gazeText, 20f, 210f, textPaint)
+        
+        // Enhanced debug information
+        val distanceRangeText = "Distance Range: ${\"%.2f\".format(calculateDistanceRange((leftSphere.radius + rightSphere.radius) / 2f))}"
+        val gazeVelocityText = "Gaze Velocity: ${\"%.2f\".format(gazeTipVelocity)}"
+        val adaptiveSensText = "Adaptive Sens: ${\"%.2f\".format(adaptiveSensitivity)}"
+        val eyeYInfluenceText = "Eye Y Influence: ${\"%.2f\".format(calculateYPositionInfluence((leftSphere.centerY + rightSphere.centerY) / 2f, height.toFloat()))}"
+        
+        canvas.drawText(distanceRangeText, 20f, 250f, textPaint)
+        canvas.drawText(gazeVelocityText, 20f, 290f, textPaint)
+        canvas.drawText(adaptiveSensText, 20f, 330f, textPaint)
+        canvas.drawText(eyeYInfluenceText, 20f, 370f, textPaint)
     }
 }
