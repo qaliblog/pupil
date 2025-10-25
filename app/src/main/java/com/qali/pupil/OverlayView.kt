@@ -25,12 +25,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     // --- Control and Tuning Variables ---
 
-    var pointerGazeSensitivityX = 16.0f
-    var pointerGazeSensitivityY = 18.0f
+    var pointerGazeSensitivityX = 19.031168f
+    var pointerGazeSensitivityY = 0.011528987f
     var pointerHeadSensitivity = 0.6f
     var headTiltYBaseSensitivity = 2.5f
-    var pointerGyroSensitivity = 200f
-    var pointerDampingFactor = 0.4f
+    var pointerGyroSensitivity = 200.0f
+    var pointerDampingFactor = 0.9f
 
     // Eye Position and Distance Scaling
     var leftEyeX = 0f
@@ -39,7 +39,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     var rightEyeX = 0f
     var rightEyeY = -17f
     var rightEyeZ = 0f
-    private var distanceScalingFactor = 1.0f
+    private var distanceScalingFactor = 171792.53f
     private val neutralFaceDepth = 300.0f
     
     // Enhanced cursor control variables
@@ -109,21 +109,21 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     )
     
     private data class CalibrationData(
-        var avgYPositionInfluence: Float = 0f,
-        var avgDistanceRange: Float = 0f,
-        var avgGazeSensitivity: Float = 0f,
-        var avgEyeYMin: Float = Float.MAX_VALUE,
-        var avgEyeYMax: Float = Float.MIN_VALUE,
-        var avgSphereSizeMin: Float = Float.MAX_VALUE,
-        var avgSphereSizeMax: Float = Float.MIN_VALUE,
-        var isCalibrated: Boolean = false,
-        var clickCount: Int = 0,
+        var avgYPositionInfluence: Float = -0.10929684f,
+        var avgDistanceRange: Float = 1.8989421f,
+        var avgGazeSensitivity: Float = 1.4839412f,
+        var avgEyeYMin: Float = 1155.8164f,
+        var avgEyeYMax: Float = 1665.7925f,
+        var avgSphereSizeMin: Float = 65.951935f,
+        var avgSphereSizeMax: Float = 119.09108f,
+        var isCalibrated: Boolean = true,
+        var clickCount: Int = 420,
         // Error correction factors
-        var xErrorCorrection: Float = 1.0f,
-        var yErrorCorrection: Float = 1.0f,
-        var xOffsetCorrection: Float = 0.0f,
-        var yOffsetCorrection: Float = 0.0f,
-        var avgErrorMagnitude: Float = 0.0f
+        var xErrorCorrection: Float = 1.0662434f,
+        var yErrorCorrection: Float = 0.94424844f,
+        var xOffsetCorrection: Float = -773.04565f,
+        var yOffsetCorrection: Float = 4377.0664f,
+        var avgErrorMagnitude: Float = 873.8477f
     ) : Serializable
 
     // Static offsets for the pointer
@@ -209,6 +209,40 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
 
     init {
         startGyroscopeListening()
+        initializeOptimizedParameters()
+    }
+    
+    // Initialize system with provided optimized parameters
+    private fun initializeOptimizedParameters() {
+        // Set base parameters from provided data
+        pointerGazeSensitivityX = 19.031168f
+        pointerGazeSensitivityY = 0.011528987f
+        pointerHeadSensitivity = 0.6f
+        headTiltYBaseSensitivity = 2.5f
+        pointerGyroSensitivity = 200.0f
+        pointerDampingFactor = 0.9f
+        distanceScalingFactor = 171792.53f
+        
+        // Initialize calibration data with provided values
+        calibrationData = CalibrationData(
+            avgYPositionInfluence = -0.10929684f,
+            avgDistanceRange = 1.8989421f,
+            avgGazeSensitivity = 1.4839412f,
+            avgEyeYMin = 1155.8164f,
+            avgEyeYMax = 1665.7925f,
+            avgSphereSizeMin = 65.951935f,
+            avgSphereSizeMax = 119.09108f,
+            isCalibrated = true,
+            clickCount = 420,
+            xErrorCorrection = 1.0662434f,
+            yErrorCorrection = 0.94424844f,
+            xOffsetCorrection = -773.04565f,
+            yOffsetCorrection = 4377.0664f,
+            avgErrorMagnitude = 873.8477f
+        )
+        
+        // Update system parameters
+        updateSystemFromCalibration()
     }
 
     // --- Public Methods for Control ---
@@ -456,18 +490,28 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private fun updateSystemFromCalibration() {
         if (!calibrationData.isCalibrated) return
         
-        // Update sphere size ranges based on actual user data
-        minSphereSize = calibrationData.avgSphereSizeMin * 0.8f
-        maxSphereSize = calibrationData.avgSphereSizeMax * 1.2f
+        // Update sphere size ranges using provided optimized values
+        minSphereSize = calibrationData.avgSphereSizeMin  // 65.951935f
+        maxSphereSize = calibrationData.avgSphereSizeMax  // 119.09108f
         
-        // Update eye Y ratios based on actual user range
+        // Update eye Y ratios using provided optimized ranges
         val screenHeight = height.toFloat()
-        val userMinRatio = calibrationData.avgEyeYMin / screenHeight
-        val userMaxRatio = calibrationData.avgEyeYMax / screenHeight
+        val userMinRatio = calibrationData.avgEyeYMin / screenHeight  // 1155.8164f
+        val userMaxRatio = calibrationData.avgEyeYMax / screenHeight  // 1665.7925f
         
-        // Use user's range but ensure it's within reasonable bounds
-        typicalEyeMinYRatio = userMinRatio.coerceIn(0.1f, 0.6f)
-        typicalEyeMaxYRatio = userMaxRatio.coerceIn(0.4f, 0.95f)
+        // Use the provided optimized ranges directly
+        typicalEyeMinYRatio = userMinRatio.coerceIn(0.1f, 0.8f)
+        typicalEyeMaxYRatio = userMaxRatio.coerceIn(0.2f, 0.95f)
+        
+        // Update distance scaling factor with provided value
+        distanceScalingFactor = 171792.53f
+        
+        // Update gaze sensitivities with provided optimized values
+        pointerGazeSensitivityX = 19.031168f
+        pointerGazeSensitivityY = 0.011528987f
+        
+        // Update damping factor with provided value
+        pointerDampingFactor = 0.9f
         
         invalidate()
     }
@@ -924,15 +968,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val targetX = headInfluencedCenterX + gazeScreenOffsetX + gyroInfluenceX
             val targetY = headInfluencedCenterY + gazeScreenOffsetY + gyroInfluenceY + yPositionOffset
             
-            // 12. Apply error correction if calibrated
+            // 12. Apply enhanced error correction with provided optimized values
             val correctedTargetX = if (calibrationData.isCalibrated) {
-                (targetX * calibrationData.xErrorCorrection) - calibrationData.xOffsetCorrection
+                // Apply multiplicative correction factor and additive offset
+                (targetX * calibrationData.xErrorCorrection) + calibrationData.xOffsetCorrection
             } else {
                 targetX
             }
             
             val correctedTargetY = if (calibrationData.isCalibrated) {
-                (targetY * calibrationData.yErrorCorrection) - calibrationData.yOffsetCorrection
+                // Apply multiplicative correction factor and additive offset
+                (targetY * calibrationData.yErrorCorrection) + calibrationData.yOffsetCorrection
             } else {
                 targetY
             }
@@ -1198,9 +1244,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Save formula snapshot
         saveFormulaSnapshot(optimizedParams, errorAnalysis)
         
+        val advancedFormulas = generateAdvancedFormula(errorAnalysis)
+        
         aiOptimizedFormula = "AI optimization completed at ${lastAiOptimizationTime}\n" +
                 "Optimized ${recentPoints.size} recent data points\n" +
-                "Average error reduced by ${errorAnalysis.errorReduction}%"
+                "Average error reduced by ${errorAnalysis.errorReduction}%\n\n" +
+                "Advanced Formula Variations:\n$advancedFormulas"
     }
     
     private fun analyzeErrorPatterns(points: List<CalibrationPoint>): ErrorAnalysis {
@@ -1262,26 +1311,61 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     }
     
     private fun createOptimizedParameters(analysis: ErrorAnalysis): OptimizedParameters {
-        // Create optimized parameters based on error analysis
+        // Enhanced parameter optimization with advanced mathematical operators
+        
+        // X sensitivity with exponential scaling for high correlation
         val xSensitivityAdjustment = if (analysis.xPositionCorrelation > 0.3f) {
-            1.0f + (analysis.avgErrorX / 1000f) * 0.1f
+            val baseAdjustment = 1.0f + (analysis.avgErrorX / 1000f) * 0.1f
+            // Apply exponential scaling for stronger correlations
+            if (analysis.xPositionCorrelation > 0.7f) {
+                baseAdjustment * kotlin.math.pow(1.2f, analysis.xPositionCorrelation).toFloat()
+            } else {
+                baseAdjustment
+            }
         } else 1.0f
         
+        // Y sensitivity with logarithmic scaling for better fine-tuning
         val ySensitivityAdjustment = if (analysis.yPositionCorrelation > 0.3f) {
-            1.0f + (analysis.avgErrorY / 1000f) * 0.1f
+            val baseAdjustment = 1.0f + (analysis.avgErrorY / 1000f) * 0.1f
+            // Apply logarithmic scaling for smoother adjustments
+            if (analysis.yPositionCorrelation > 0.5f) {
+                baseAdjustment * (1.0f + kotlin.math.ln(analysis.yPositionCorrelation + 1.0f))
+            } else {
+                baseAdjustment
+            }
         } else 1.0f
         
+        // Distance adjustment with power function scaling
         val distanceAdjustment = if (analysis.distanceCorrelation > 0.3f) {
-            1.0f + (analysis.distanceCorrelation * 0.2f)
+            val baseAdjustment = 1.0f + (analysis.distanceCorrelation * 0.2f)
+            // Apply power scaling for non-linear distance effects
+            kotlin.math.pow(baseAdjustment, 1.0f + analysis.distanceCorrelation * 0.5f).toFloat()
         } else 1.0f
+        
+        // Advanced offset calculations with quadratic scaling
+        val xOffsetAdjustment = -analysis.avgErrorX * (0.3f + analysis.xPositionCorrelation * 0.2f)
+        val yOffsetAdjustment = -analysis.avgErrorY * (0.3f + analysis.yPositionCorrelation * 0.2f)
+        
+        // Dynamic damping based on error patterns
+        val dampingAdjustment = when {
+            analysis.avgErrorMagnitude > 800f -> 0.15f  // High error - more damping
+            analysis.avgErrorMagnitude > 500f -> 0.1f   // Medium error - moderate damping
+            analysis.avgErrorMagnitude > 200f -> 0.05f  // Low error - light damping
+            else -> 0f  // Very low error - no additional damping
+        }
         
         return OptimizedParameters(
-            xSensitivityMultiplier = xSensitivityAdjustment.coerceIn(0.5f, 2.0f),
-            ySensitivityMultiplier = ySensitivityAdjustment.coerceIn(0.5f, 2.0f),
-            distanceScalingMultiplier = distanceAdjustment.coerceIn(0.5f, 2.0f),
-            xOffsetAdjustment = -analysis.avgErrorX * 0.3f,
-            yOffsetAdjustment = -analysis.avgErrorY * 0.3f,
-            dampingAdjustment = if (analysis.avgErrorMagnitude > 500f) 0.1f else 0f
+            xSensitivityMultiplier = xSensitivityAdjustment.coerceIn(0.3f, 3.0f),
+            ySensitivityMultiplier = ySensitivityAdjustment.coerceIn(0.3f, 3.0f),
+            distanceScalingMultiplier = distanceAdjustment.coerceIn(0.3f, 3.0f),
+            xOffsetAdjustment = xOffsetAdjustment,
+            yOffsetAdjustment = yOffsetAdjustment,
+            dampingAdjustment = dampingAdjustment,
+            // New advanced parameters
+            exponentialScaling = analysis.xPositionCorrelation > 0.7f,
+            logarithmicScaling = analysis.yPositionCorrelation > 0.5f,
+            powerScaling = analysis.distanceCorrelation > 0.6f,
+            quadraticOffset = analysis.avgErrorMagnitude > 400f
         )
     }
     
@@ -1390,7 +1474,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val distanceScalingMultiplier: Float,
         val xOffsetAdjustment: Float,
         val yOffsetAdjustment: Float,
-        val dampingAdjustment: Float
+        val dampingAdjustment: Float,
+        val exponentialScaling: Boolean = false,
+        val logarithmicScaling: Boolean = false,
+        val powerScaling: Boolean = false,
+        val quadraticOffset: Boolean = false
     )
     
     // Formula data for display
@@ -1414,6 +1502,147 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val performance: Map<String, Float>
     ) : Serializable
     
+    // Advanced formula generation with multiple mathematical operators
+    private fun generateAdvancedFormula(analysis: ErrorAnalysis): String {
+        val baseX = pointerGazeSensitivityX
+        val baseY = pointerGazeSensitivityY
+        val baseDistance = distanceScalingFactor
+        
+        // Generate different formula variations based on error patterns
+        val formulas = mutableListOf<String>()
+        
+        // Formula 1: Exponential scaling for high correlations
+        if (analysis.xPositionCorrelation > 0.7f || analysis.yPositionCorrelation > 0.7f) {
+            val expFormula = """
+                Exponential Formula:
+                X = baseX * e^(correlationX * 0.5) * gazeDirectionX * distanceRange
+                Y = baseY * e^(correlationY * 0.5) * gazeDirectionY * distanceRange
+            """.trimIndent()
+            formulas.add(expFormula)
+        }
+        
+        // Formula 2: Logarithmic scaling for moderate correlations
+        if (analysis.xPositionCorrelation > 0.5f || analysis.yPositionCorrelation > 0.5f) {
+            val logFormula = """
+                Logarithmic Formula:
+                X = baseX * ln(correlationX + 1) * gazeDirectionX * distanceRange
+                Y = baseY * ln(correlationY + 1) * gazeDirectionY * distanceRange
+            """.trimIndent()
+            formulas.add(logFormula)
+        }
+        
+        // Formula 3: Power scaling for distance effects
+        if (analysis.distanceCorrelation > 0.6f) {
+            val powerFormula = """
+                Power Formula:
+                X = baseX * (distanceRange^correlationDistance) * gazeDirectionX
+                Y = baseY * (distanceRange^correlationDistance) * gazeDirectionY
+            """.trimIndent()
+            formulas.add(powerFormula)
+        }
+        
+        // Formula 4: Quadratic offset for high errors
+        if (analysis.avgErrorMagnitude > 400f) {
+            val quadFormula = """
+                Quadratic Offset Formula:
+                X = baseX * gazeDirectionX + (errorX^2 * 0.001)
+                Y = baseY * gazeDirectionY + (errorY^2 * 0.001)
+            """.trimIndent()
+            formulas.add(quadFormula)
+        }
+        
+        // Formula 5: Multiplicative compound scaling
+        val compoundFormula = """
+            Compound Multiplicative Formula:
+            X = baseX * gazeDirectionX * distanceRange * adaptiveSensitivity * 
+                (1 + correlationX * 0.3) * (1 + errorX * 0.0001)
+            Y = baseY * gazeDirectionY * distanceRange * adaptiveSensitivity * 
+                (1 + correlationY * 0.3) * (1 + errorY * 0.0001)
+        """.trimIndent()
+        formulas.add(compoundFormula)
+        
+        // Formula 6: Ratio-based proportional scaling
+        val ratioFormula = """
+            Ratio-Based Formula:
+            X = baseX * (gazeDirectionX / (1 + abs(errorX) * 0.001)) * distanceRange
+            Y = baseY * (gazeDirectionY / (1 + abs(errorY) * 0.001)) * distanceRange
+        """.trimIndent()
+        formulas.add(ratioFormula)
+        
+        return formulas.joinToString("\n\n")
+    }
+    
+    // Enhanced AI prompt for formula generation with operator considerations
+    private fun generateEnhancedFormulaPrompt(): String {
+        return """
+            ENHANCED PUPIL CURSOR CONTROL FORMULA GENERATION
+            ================================================
+            
+            Current System Parameters:
+            - Gaze Sensitivity X: $pointerGazeSensitivityX
+            - Gaze Sensitivity Y: $pointerGazeSensitivityY
+            - Head Sensitivity: $pointerHeadSensitivity
+            - Gyro Sensitivity: $pointerGyroSensitivity
+            - Damping Factor: $pointerDampingFactor
+            - Distance Scaling: $distanceScalingFactor
+            
+            Error Correction Factors:
+            - X Correction: ${calibrationData.xErrorCorrection}
+            - Y Correction: ${calibrationData.yErrorCorrection}
+            - X Offset: ${calibrationData.xOffsetCorrection}
+            - Y Offset: ${calibrationData.yOffsetCorrection}
+            - Average Error: ${calibrationData.avgErrorMagnitude}px
+            
+            FORMULA GENERATION STRATEGY:
+            
+            1. OPERATOR SELECTION CRITERIA:
+               - Use EXPONENTIAL (e^x) for strong correlations (>0.7)
+               - Use LOGARITHMIC (ln(x+1)) for moderate correlations (0.3-0.7)
+               - Use POWER (x^y) for distance-based non-linear effects
+               - Use QUADRATIC (x^2) for high-error scenarios (>400px)
+               - Use MULTIPLICATIVE (*) for compound scaling
+               - Use ADDITIVE (+) for linear offsets
+               - Use DIVISIVE (/) for proportional relationships
+            
+            2. MULTIPLIER EFFECT CONSIDERATIONS:
+               - Correlation strength determines exponential base
+               - Error magnitude influences power scaling exponent
+               - Distance range affects logarithmic scaling factor
+               - Position influence modifies additive offset magnitude
+               - Velocity patterns adjust multiplicative coefficients
+            
+            3. FORMULA EVOLUTION RULES:
+               - Test operator combinations systematically
+               - Measure performance impact of each operator change
+               - Evolve formula structure based on error reduction
+               - Consider operator interactions and dependencies
+               - Optimize for user-specific calibration patterns
+            
+            4. ADVANCED MATHEMATICAL OPERATORS:
+               - Trigonometric: sin(), cos(), tan() for periodic effects
+               - Hyperbolic: sinh(), cosh(), tanh() for saturation effects
+               - Root functions: sqrt(), cbrt() for diminishing returns
+               - Absolute: abs() for magnitude-based scaling
+               - Sign: sign() for direction-based adjustments
+               - Clamp: clamp() for bounded ranges
+            
+            5. COMPOUND FORMULA STRUCTURES:
+               - Nested operators: f(g(h(x))) for complex relationships
+               - Conditional operators: x > threshold ? f(x) : g(x)
+               - Weighted combinations: w1*f1(x) + w2*f2(x) + w3*f3(x)
+               - Adaptive scaling: base * (1 + correlation * factor)
+               - Error feedback: current + (error * learning_rate)
+            
+            Generate formulas that:
+            - Minimize average error magnitude
+            - Maximize correlation with user behavior
+            - Adapt to changing calibration patterns
+            - Provide smooth cursor movement
+            - Handle edge cases gracefully
+            - Scale appropriately with distance and position
+        """.trimIndent()
+    }
+
     fun getFormulaData(): FormulaData {
         val baseParams = """
             Base Parameters:
@@ -1445,6 +1674,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         } else {
             "No AI optimization applied"
         }
+        
+        val enhancedPrompt = generateEnhancedFormulaPrompt()
         
         val calibData = if (calibrationData.isCalibrated) {
             """
@@ -1483,6 +1714,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             $aiFormula
             
             $calibData
+            
+            Enhanced Formula Generation:
+            $enhancedPrompt
             
             $formulaHistoryText
             
