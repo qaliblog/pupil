@@ -13,6 +13,9 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import android.util.Size
 import kotlin.math.abs
+import android.widget.Button
+import android.widget.TextView
+import android.view.View
 
 
 class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListener {
@@ -20,6 +23,8 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
     private lateinit var faceLandmarkerHelper: FaceLandmarkerHelper
     private lateinit var overlayView: OverlayView
     private lateinit var viewFinder: PreviewView
+    private lateinit var calibrationButton: Button
+    private lateinit var calibrationStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +32,22 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
 
         overlayView = findViewById(R.id.overlay_view)
         viewFinder = findViewById(R.id.viewFinder)
+        calibrationButton = findViewById(R.id.calibrationButton)
+        calibrationStatus = findViewById(R.id.calibrationStatus)
+        
+        // Setup calibration button
+        calibrationButton.setOnClickListener {
+            if (overlayView.isCalibrationActive()) {
+                overlayView.stopCalibration()
+                calibrationButton.text = "Start Calibration"
+            } else {
+                overlayView.startCalibration()
+                calibrationButton.text = "Stop Calibration"
+            }
+        }
+        
+        // Setup calibration status updates
+        updateCalibrationStatus()
 
 
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -142,6 +163,9 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         faceLandmarkerHelper.getCurrentFPS()?.let { fps ->
             overlayView.updateFPS(fps)
         }
+        
+        // Update calibration status
+        updateCalibrationStatus()
     } else {
         overlayView.clear()
     }
@@ -187,6 +211,27 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         }
         return Size(width,height)
     }
+    private fun updateCalibrationStatus() {
+        calibrationStatus.text = overlayView.getCalibrationStatus()
+    }
+    
+    // Handle screen tap for calibration
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (overlayView.isCalibrationActive()) {
+            overlayView.handleCalibrationClick()
+        }
+    }
+    
+    // Handle touch events for calibration
+    override fun onTouchEvent(event: android.view.MotionEvent?): Boolean {
+        if (overlayView.isCalibrationActive() && event?.action == android.view.MotionEvent.ACTION_DOWN) {
+            overlayView.handleCalibrationClick()
+            return true
+        }
+        return super.onTouchEvent(event)
+    }
+
     companion object {
         private const val TAG = "MainActivity"
     }
