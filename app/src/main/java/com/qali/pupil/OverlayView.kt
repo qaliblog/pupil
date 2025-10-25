@@ -49,8 +49,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var eyeYVelocity = 0f
     
     // Eye position normalization constants
-    private val typicalEyeMinYRatio = 0.4f  // Bottom 60% starts here
-    private val typicalEyeMaxYRatio = 0.9f  // Leave margin at bottom
+    private var typicalEyeMinYRatio = 0.4f  // Bottom 60% starts here
+    private var typicalEyeMaxYRatio = 0.9f  // Leave margin at bottom
     
     // Dynamic Calibration System
     private var isCalibrating = false
