@@ -347,8 +347,9 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         // Get formula data from overlay view
         val formulaData = overlayView.getFormulaData()
         
-        baseParametersText.text = formulaData.baseParameters
-        errorCorrectionsText.text = formulaData.errorCorrections
+        // Show JSON format in the main text area
+        baseParametersText.text = "JSON Formula:\n${formulaData.jsonFormula}"
+        errorCorrectionsText.text = "Text Format:\n${formulaData.baseParameters}"
         aiFormulaText.text = formulaData.aiFormula
         calibrationDataText.text = formulaData.calibrationData
         
@@ -360,9 +361,9 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         
         copyButton.setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("Formula", formulaData.fullFormula)
+            val clip = ClipData.newPlainText("Formula JSON", formulaData.jsonFormula)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "Formula copied to clipboard", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "JSON Formula copied to clipboard", Toast.LENGTH_SHORT).show()
         }
         
         exportButton.setOnClickListener {

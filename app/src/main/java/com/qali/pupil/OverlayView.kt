@@ -21,6 +21,8 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import java.io.*
 import java.io.Serializable
+import org.json.JSONObject
+import org.json.JSONArray
 
 class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs), SensorEventListener {
 
@@ -82,6 +84,63 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var formulaHistory = mutableListOf<FormulaSnapshot>()
     private var currentFormulaVersion = 0
     private val maxHistorySize = 50
+    
+    // JSON Formula System
+    private var currentFormulaJson: JSONObject? = null
+    private var formulaUpdateTime = 0L
+    
+    // JSON Formula Data Classes
+    data class FormulaJson(
+        val version: String,
+        val timestamp: Long,
+        val baseParameters: BaseParametersJson,
+        val errorCorrections: ErrorCorrectionsJson,
+        val calibrationData: CalibrationDataJson,
+        val aiOptimization: AiOptimizationJson,
+        val formulaVariations: List<FormulaVariationJson>
+    )
+    
+    data class BaseParametersJson(
+        val gazeSensitivityX: Float,
+        val gazeSensitivityY: Float,
+        val headSensitivity: Float,
+        val headTiltYBase: Float,
+        val gyroSensitivity: Float,
+        val dampingFactor: Float,
+        val distanceScaling: Float
+    )
+    
+    data class ErrorCorrectionsJson(
+        val xCorrectionFactor: Float,
+        val yCorrectionFactor: Float,
+        val xOffset: Float,
+        val yOffset: Float,
+        val averageError: Float,
+        val clickCount: Int
+    )
+    
+    data class CalibrationDataJson(
+        val pointsCollected: Int,
+        val eyeYRange: Pair<Float, Float>,
+        val sphereSizeRange: Pair<Float, Float>,
+        val yPositionInfluence: Float,
+        val distanceRange: Float,
+        val gazeSensitivity: Float
+    )
+    
+    data class AiOptimizationJson(
+        val completedAt: Long,
+        val optimizedPoints: Int,
+        val errorReduction: Float,
+        val status: String
+    )
+    
+    data class FormulaVariationJson(
+        val name: String,
+        val description: String,
+        val xFormula: String,
+        val yFormula: String
+    )
     
     // Calibration data classes
     private data class CalibrationPoint(
@@ -1514,7 +1573,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val aiFormula: String,
         val calibrationData: String,
         val fullFormula: String,
-        val formulaHistory: String
+        val formulaHistory: String,
+        val jsonFormula: String = ""  // JSON format
     )
     
     // Formula snapshot for history
@@ -1527,6 +1587,194 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val aiOptimizations: Map<String, Float>,
         val performance: Map<String, Float>
     ) : Serializable
+    
+    // Generate JSON formula data
+    private fun generateFormulaJson(): JSONObject {
+        val formulaJson = FormulaJson(
+            version = "1.0",
+            timestamp = System.currentTimeMillis(),
+            baseParameters = BaseParametersJson(
+                gazeSensitivityX = pointerGazeSensitivityX,
+                gazeSensitivityY = pointerGazeSensitivityY,
+                headSensitivity = pointerHeadSensitivity,
+                headTiltYBase = headTiltYBaseSensitivity,
+                gyroSensitivity = pointerGyroSensitivity,
+                dampingFactor = pointerDampingFactor,
+                distanceScaling = distanceScalingFactor
+            ),
+            errorCorrections = ErrorCorrectionsJson(
+                xCorrectionFactor = calibrationData.xErrorCorrection,
+                yCorrectionFactor = calibrationData.yErrorCorrection,
+                xOffset = calibrationData.xOffsetCorrection,
+                yOffset = calibrationData.yOffsetCorrection,
+                averageError = calibrationData.avgErrorMagnitude,
+                clickCount = calibrationData.clickCount
+            ),
+            calibrationData = CalibrationDataJson(
+                pointsCollected = calibrationPoints.size,
+                eyeYRange = Pair(calibrationData.avgEyeYMin, calibrationData.avgEyeYMax),
+                sphereSizeRange = Pair(calibrationData.avgSphereSizeMin, calibrationData.avgSphereSizeMax),
+                yPositionInfluence = calibrationData.avgYPositionInfluence,
+                distanceRange = calibrationData.avgDistanceRange,
+                gazeSensitivity = calibrationData.avgGazeSensitivity
+            ),
+            aiOptimization = AiOptimizationJson(
+                completedAt = lastAiOptimizationTime,
+                optimizedPoints = calibrationPoints.takeLast(100).size,
+                errorReduction = if (formulaHistory.isNotEmpty()) formulaHistory.last().errorReduction else 0f,
+                status = if (isAiPrompting) "Processing..." else "Completed"
+            ),
+            formulaVariations = generateFormulaVariations()
+        )
+        
+        return convertFormulaToJson(formulaJson)
+    }
+    
+    private fun convertFormulaToJson(formula: FormulaJson): JSONObject {
+        val json = JSONObject()
+        
+        // Basic info
+        json.put("version", formula.version)
+        json.put("timestamp", formula.timestamp)
+        
+        // Base parameters
+        val baseParams = JSONObject()
+        baseParams.put("gazeSensitivityX", formula.baseParameters.gazeSensitivityX)
+        baseParams.put("gazeSensitivityY", formula.baseParameters.gazeSensitivityY)
+        baseParams.put("headSensitivity", formula.baseParameters.headSensitivity)
+        baseParams.put("headTiltYBase", formula.baseParameters.headTiltYBase)
+        baseParams.put("gyroSensitivity", formula.baseParameters.gyroSensitivity)
+        baseParams.put("dampingFactor", formula.baseParameters.dampingFactor)
+        baseParams.put("distanceScaling", formula.baseParameters.distanceScaling)
+        json.put("baseParameters", baseParams)
+        
+        // Error corrections
+        val errorCorrections = JSONObject()
+        errorCorrections.put("xCorrectionFactor", formula.errorCorrections.xCorrectionFactor)
+        errorCorrections.put("yCorrectionFactor", formula.errorCorrections.yCorrectionFactor)
+        errorCorrections.put("xOffset", formula.errorCorrections.xOffset)
+        errorCorrections.put("yOffset", formula.errorCorrections.yOffset)
+        errorCorrections.put("averageError", formula.errorCorrections.averageError)
+        errorCorrections.put("clickCount", formula.errorCorrections.clickCount)
+        json.put("errorCorrections", errorCorrections)
+        
+        // Calibration data
+        val calibData = JSONObject()
+        calibData.put("pointsCollected", formula.calibrationData.pointsCollected)
+        calibData.put("eyeYMin", formula.calibrationData.eyeYRange.first)
+        calibData.put("eyeYMax", formula.calibrationData.eyeYRange.second)
+        calibData.put("sphereSizeMin", formula.calibrationData.sphereSizeRange.first)
+        calibData.put("sphereSizeMax", formula.calibrationData.sphereSizeRange.second)
+        calibData.put("yPositionInfluence", formula.calibrationData.yPositionInfluence)
+        calibData.put("distanceRange", formula.calibrationData.distanceRange)
+        calibData.put("gazeSensitivity", formula.calibrationData.gazeSensitivity)
+        json.put("calibrationData", calibData)
+        
+        // AI optimization
+        val aiOpt = JSONObject()
+        aiOpt.put("completedAt", formula.aiOptimization.completedAt)
+        aiOpt.put("optimizedPoints", formula.aiOptimization.optimizedPoints)
+        aiOpt.put("errorReduction", formula.aiOptimization.errorReduction)
+        aiOpt.put("status", formula.aiOptimization.status)
+        json.put("aiOptimization", aiOpt)
+        
+        // Formula variations
+        val variations = JSONArray()
+        formula.formulaVariations.forEach { variation ->
+            val varJson = JSONObject()
+            varJson.put("name", variation.name)
+            varJson.put("description", variation.description)
+            varJson.put("xFormula", variation.xFormula)
+            varJson.put("yFormula", variation.yFormula)
+            variations.put(varJson)
+        }
+        json.put("formulaVariations", variations)
+        
+        return json
+    }
+    
+    private fun generateFormulaVariations(): List<FormulaVariationJson> {
+        return listOf(
+            FormulaVariationJson(
+                name = "Linear Formula",
+                description = "Basic linear mapping with sensitivity adjustments",
+                xFormula = "targetX = gazeDirectionX * gazeSensitivityX * adaptiveSensitivity",
+                yFormula = "targetY = gazeDirectionY * gazeSensitivityY * adaptiveSensitivity + yPositionOffset"
+            ),
+            FormulaVariationJson(
+                name = "Exponential Formula",
+                description = "Exponential scaling for strong correlations",
+                xFormula = "targetX = gazeDirectionX * gazeSensitivityX * exp(correlationX * 0.5)",
+                yFormula = "targetY = gazeDirectionY * gazeSensitivityY * exp(correlationY * 0.5) + yPositionOffset"
+            ),
+            FormulaVariationJson(
+                name = "Logarithmic Formula",
+                description = "Logarithmic scaling for moderate correlations",
+                xFormula = "targetX = gazeDirectionX * gazeSensitivityX * ln(correlationX + 1)",
+                yFormula = "targetY = gazeDirectionY * gazeSensitivityY * ln(correlationY + 1) + yPositionOffset"
+            ),
+            FormulaVariationJson(
+                name = "Quadratic Offset Formula",
+                description = "Quadratic error correction for high-error scenarios",
+                xFormula = "targetX = gazeDirectionX * gazeSensitivityX + (errorX^2 * 0.001)",
+                yFormula = "targetY = gazeDirectionY * gazeSensitivityY + (errorY^2 * 0.001) + yPositionOffset"
+            ),
+            FormulaVariationJson(
+                name = "Compound Multiplicative Formula",
+                description = "Complex multiplicative scaling with multiple factors",
+                xFormula = "targetX = gazeDirectionX * gazeSensitivityX * distanceRange * adaptiveSensitivity * (1 + correlationX * 0.3)",
+                yFormula = "targetY = gazeDirectionY * gazeSensitivityY * distanceRange * adaptiveSensitivity * (1 + correlationY * 0.3) + yPositionOffset"
+            )
+        )
+    }
+    
+    // Parse JSON formula and apply parameters
+    private fun parseAndApplyFormulaJson(jsonString: String): Boolean {
+        return try {
+            val json = JSONObject(jsonString)
+            
+            // Parse base parameters
+            val baseParams = json.getJSONObject("baseParameters")
+            pointerGazeSensitivityX = baseParams.getDouble("gazeSensitivityX").toFloat()
+            pointerGazeSensitivityY = baseParams.getDouble("gazeSensitivityY").toFloat()
+            pointerHeadSensitivity = baseParams.getDouble("headSensitivity").toFloat()
+            headTiltYBaseSensitivity = baseParams.getDouble("headTiltYBase").toFloat()
+            pointerGyroSensitivity = baseParams.getDouble("gyroSensitivity").toFloat()
+            pointerDampingFactor = baseParams.getDouble("dampingFactor").toFloat()
+            distanceScalingFactor = baseParams.getDouble("distanceScaling").toFloat()
+            
+            // Parse error corrections
+            val errorCorrections = json.getJSONObject("errorCorrections")
+            calibrationData.xErrorCorrection = errorCorrections.getDouble("xCorrectionFactor").toFloat()
+            calibrationData.yErrorCorrection = errorCorrections.getDouble("yCorrectionFactor").toFloat()
+            calibrationData.xOffsetCorrection = errorCorrections.getDouble("xOffset").toFloat()
+            calibrationData.yOffsetCorrection = errorCorrections.getDouble("yOffset").toFloat()
+            calibrationData.avgErrorMagnitude = errorCorrections.getDouble("averageError").toFloat()
+            calibrationData.clickCount = errorCorrections.getInt("clickCount")
+            
+            // Parse calibration data
+            val calibData = json.getJSONObject("calibrationData")
+            calibrationData.avgEyeYMin = calibData.getDouble("eyeYMin").toFloat()
+            calibrationData.avgEyeYMax = calibData.getDouble("eyeYMax").toFloat()
+            calibrationData.avgSphereSizeMin = calibData.getDouble("sphereSizeMin").toFloat()
+            calibrationData.avgSphereSizeMax = calibData.getDouble("sphereSizeMax").toFloat()
+            calibrationData.avgYPositionInfluence = calibData.getDouble("yPositionInfluence").toFloat()
+            calibrationData.avgDistanceRange = calibData.getDouble("distanceRange").toFloat()
+            calibrationData.avgGazeSensitivity = calibData.getDouble("gazeSensitivity").toFloat()
+            
+            formulaUpdateTime = System.currentTimeMillis()
+            true
+        } catch (e: Exception) {
+            Log.e("FormulaJson", "Failed to parse formula JSON: ${e.message}")
+            false
+        }
+    }
+    
+    // Get current formula as JSON string
+    fun getFormulaJsonString(): String {
+        val json = generateFormulaJson()
+        return json.toString(2) // Pretty print with 2-space indentation
+    }
     
     // Advanced formula generation with multiple mathematical operators
     private fun generateAdvancedFormula(analysis: ErrorAnalysis): String {
@@ -1670,6 +1918,20 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     }
 
     fun getFormulaData(): FormulaData {
+        // Generate JSON formula
+        val jsonFormula = getFormulaJsonString()
+        
+        // Also generate the old text format for backward compatibility
+        val baseParams = """
+            Base Parameters:
+            - Gaze Sensitivity X: $pointerGazeSensitivityX
+            - Gaze Sensitivity Y: $pointerGazeSensitivityY
+            - Head Sensitivity: $pointerHeadSensitivity
+            - Head Tilt Y Base: $headTiltYBaseSensitivity
+            - Gyro Sensitivity: $pointerGyroSensitivity
+            - Damping Factor: $pointerDampingFactor
+            - Distance Scaling: $distanceScalingFactor
+        """.trimIndent()
         val baseParams = """
             Base Parameters:
             - Gaze Sensitivity X: $pointerGazeSensitivityX
@@ -1749,6 +2011,6 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             Generated: ${System.currentTimeMillis()}
         """.trimIndent()
         
-        return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula, formulaHistoryText)
+        return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula, formulaHistoryText, jsonFormula)
     }
 }
