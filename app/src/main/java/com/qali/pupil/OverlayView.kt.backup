@@ -1462,13 +1462,10 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val formulaHistoryText = if (formulaHistory.isNotEmpty()) {
             """
             Formula History (Last ${formulaHistory.size} versions):
-            ${
-                val historyEntries = formulaHistory.takeLast(5).joinToString("\n") { snapshot ->
-                    "Version ${snapshot.version} (${Date(snapshot.timestamp)}): " +
-                    "Error Reduction: ${"%.1f".format(snapshot.performance["errorReduction"] ?: 0f)}%, " +
-                    "Distance Corr: ${"%.2f".format(snapshot.performance["distanceCorrelation"] ?: 0f)}"
-                }
-                historyEntries
+            ${formulaHistory.takeLast(5).joinToString("\n") { snapshot ->
+                "Version ${snapshot.version} (${Date(snapshot.timestamp)}): " +
+                "Error Reduction: ${"%.1f".format(snapshot.performance["errorReduction"] ?: 0f)}%, " +
+                "Distance Corr: ${"%.2f".format(snapshot.performance["distanceCorrelation"] ?: 0f)}"
             }
             """.trimIndent()
         } else {
