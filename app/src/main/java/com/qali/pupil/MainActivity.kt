@@ -55,6 +55,8 @@ class MainActivity : AppCompatActivity(), FaceLandmarkerHelper.LandmarkerListene
         viewFinder = findViewById(R.id.viewFinder)
         calibrationButton = findViewById(R.id.calibrationButton)
         resetButton = findViewById(R.id.resetButton)
+        settingsButton = findViewById(R.id.settingsButton)
+        formulaButton = findViewById(R.id.formulaButton)
         calibrationStatus = findViewById(R.id.calibrationStatus)
         
         // Setup calibration button
