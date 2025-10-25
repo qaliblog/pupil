@@ -15,6 +15,7 @@ import java.io.*
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -1291,7 +1292,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val sumY2 = data.sumOf { (it.second * it.second).toDouble() }
         
         val numerator = n * sumXY - sumX * sumY
-        val denominator = kotlin.math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY))
+        val denominator = sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY))
         
         return if (denominator != 0.0) (numerator / denominator).toFloat() else 0f
     }
@@ -1318,7 +1319,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val baseAdjustment = 1.0f + (analysis.avgErrorX / 1000f) * 0.1f
             // Apply exponential scaling for stronger correlations
             if (analysis.xPositionCorrelation > 0.7f) {
-                baseAdjustment * kotlin.math.pow(1.2f, analysis.xPositionCorrelation).toFloat()
+                baseAdjustment * pow(1.2f, analysis.xPositionCorrelation)
             } else {
                 baseAdjustment
             }
@@ -1329,7 +1330,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val baseAdjustment = 1.0f + (analysis.avgErrorY / 1000f) * 0.1f
             // Apply logarithmic scaling for smoother adjustments
             if (analysis.yPositionCorrelation > 0.5f) {
-                baseAdjustment * (1.0f + kotlin.math.ln(analysis.yPositionCorrelation + 1.0f))
+                baseAdjustment * (1.0f + ln(analysis.yPositionCorrelation + 1.0f))
             } else {
                 baseAdjustment
             }
@@ -1339,7 +1340,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val distanceAdjustment = if (analysis.distanceCorrelation > 0.3f) {
             val baseAdjustment = 1.0f + (analysis.distanceCorrelation * 0.2f)
             // Apply power scaling for non-linear distance effects
-            kotlin.math.pow(baseAdjustment, 1.0f + analysis.distanceCorrelation * 0.5f).toFloat()
+            pow(baseAdjustment, 1.0f + analysis.distanceCorrelation * 0.5f)
         } else 1.0f
         
         // Advanced offset calculations with quadratic scaling
