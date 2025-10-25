@@ -66,12 +66,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private data class CalibrationPoint(
         val tapX: Float,
         val tapY: Float,
+        val cursorX: Float,
+        val cursorY: Float,
         val averageEyeY: Float,
         val averageSphereSize: Float,
         val gazeVelocity: Float,
         val yPositionInfluence: Float,
         val distanceRange: Float,
         val adaptiveSensitivity: Float,
+        val errorX: Float,
+        val errorY: Float,
+        val errorMagnitude: Float,
         val timestamp: Long = System.currentTimeMillis()
     )
     
@@ -91,7 +96,13 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         var avgSphereSizeMin: Float = Float.MAX_VALUE,
         var avgSphereSizeMax: Float = Float.MIN_VALUE,
         var isCalibrated: Boolean = false,
-        var clickCount: Int = 0
+        var clickCount: Int = 0,
+        // Error correction factors
+        var xErrorCorrection: Float = 1.0f,
+        var yErrorCorrection: Float = 1.0f,
+        var xOffsetCorrection: Float = 0.0f,
+        var yOffsetCorrection: Float = 0.0f,
+        var avgErrorMagnitude: Float = 0.0f
     ) : Serializable
 
     // Static offsets for the pointer
@@ -288,7 +299,16 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     fun handleCalibrationTap(tapX: Float, tapY: Float) {
         if (!isCalibrating || landmarks.isEmpty()) return
         
-        // Add tap visualization
+        // Get current cursor position
+        val currentCursorX = cursorX
+        val currentCursorY = cursorY
+        
+        // Calculate error between tap location and cursor position
+        val errorX = tapX - currentCursorX
+        val errorY = tapY - currentCursorY
+        val errorMagnitude = sqrt(errorX * errorX + errorY * errorY)
+        
+        // Add tap visualization with error info
         tapVisualizations.add(TapVisualization(tapX, tapY, System.currentTimeMillis()))
         
         // Calculate current eye data
@@ -313,17 +333,18 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             gazeVelocity, averageEyeY, height.toFloat(), averageSphereSize
         )
         
-        // Store calibration point
+        // Store calibration point with error data
         calibrationPoints.add(
             CalibrationPoint(
-                tapX, tapY, averageEyeY, averageSphereSize,
-                gazeVelocity, yPositionInfluence, distanceRange, adaptiveSensitivity
+                tapX, tapY, currentCursorX, currentCursorY, averageEyeY, averageSphereSize,
+                gazeVelocity, yPositionInfluence, distanceRange, adaptiveSensitivity,
+                errorX, errorY, errorMagnitude
             )
         )
         
         calibrationClickCount++
         
-        // Update formulas every 20 clicks (no data cleaning)
+        // Update formulas every 20 clicks with error correction
         if (calibrationClickCount % 20 == 0) {
             updateFormulasFromCalibration()
         }
@@ -365,6 +386,29 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         calibrationData.avgYPositionInfluence = calibrationPoints.map { it.yPositionInfluence }.average().toFloat()
         calibrationData.avgDistanceRange = calibrationPoints.map { it.distanceRange }.average().toFloat()
         calibrationData.avgGazeSensitivity = calibrationPoints.map { it.adaptiveSensitivity }.average().toFloat()
+        
+        // Calculate error-based corrections
+        val avgErrorX = calibrationPoints.map { it.errorX }.average().toFloat()
+        val avgErrorY = calibrationPoints.map { it.errorY }.average().toFloat()
+        calibrationData.avgErrorMagnitude = calibrationPoints.map { it.errorMagnitude }.average().toFloat()
+        
+        // Calculate error correction factors (inverse of average error)
+        val screenWidth = width.toFloat()
+        val screenHeight = height.toFloat()
+        
+        // X correction: if cursor is consistently off to the right, reduce X sensitivity
+        calibrationData.xErrorCorrection = if (avgErrorX != 0f) {
+            (1.0f - (avgErrorX / screenWidth) * 0.5f).coerceIn(0.5f, 1.5f)
+        } else 1.0f
+        
+        // Y correction: if cursor is consistently off vertically, adjust Y sensitivity
+        calibrationData.yErrorCorrection = if (avgErrorY != 0f) {
+            (1.0f - (avgErrorY / screenHeight) * 0.5f).coerceIn(0.5f, 1.5f)
+        } else 1.0f
+        
+        // Offset corrections: adjust base cursor position
+        calibrationData.xOffsetCorrection = -avgErrorX * 0.3f
+        calibrationData.yOffsetCorrection = -avgErrorY * 0.3f
         
         // Update eye Y ranges
         val eyeYs = calibrationPoints.map { it.averageEyeY }
@@ -664,7 +708,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             isAntiAlias = true
         }
         
-        // Draw tap circles with fade effect
+        // Draw tap circles with fade effect and error vectors
         tapVisualizations.forEach { tap ->
             val elapsed = currentTime - tap.startTime
             val alpha = (255 * (1f - elapsed.toFloat() / tap.duration)).toInt().coerceIn(0, 255)
@@ -675,6 +719,31 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             
             canvas.drawCircle(tap.x, tap.y, size, tapStrokePaint)
             canvas.drawCircle(tap.x, tap.y, size * 0.7f, tapPaint)
+        }
+        
+        // Draw error vectors for recent calibration points
+        val recentPoints = calibrationPoints.takeLast(5) // Show last 5 points
+        val errorPaint = Paint().apply {
+            color = Color.RED
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            isAntiAlias = true
+        }
+        
+        recentPoints.forEach { point ->
+            val errorAlpha = (255 * (1f - (currentTime - point.timestamp).toFloat() / 5000f)).toInt().coerceIn(0, 255)
+            errorPaint.alpha = errorAlpha
+            
+            // Draw error vector from cursor to tap location
+            canvas.drawLine(
+                point.cursorX, point.cursorY,
+                point.tapX, point.tapY,
+                errorPaint
+            )
+            
+            // Draw small circles at both ends
+            canvas.drawCircle(point.cursorX, point.cursorY, 8f, errorPaint)
+            canvas.drawCircle(point.tapX, point.tapY, 8f, errorPaint)
         }
         
         // Draw instruction text
@@ -829,10 +898,23 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             val targetX = headInfluencedCenterX + gazeScreenOffsetX + gyroInfluenceX
             val targetY = headInfluencedCenterY + gazeScreenOffsetY + gyroInfluenceY + yPositionOffset
             
-            // 5. Apply Damping for Smooth Motion.
-            val previousPosition = lastPointerPosition ?: Pair(targetX, targetY)
-            val finalX = previousPosition.first + (targetX - previousPosition.first) * pointerDampingFactor
-            val finalY = previousPosition.second + (targetY - previousPosition.second) * pointerDampingFactor
+            // 12. Apply error correction if calibrated
+            val correctedTargetX = if (calibrationData.isCalibrated) {
+                (targetX * calibrationData.xErrorCorrection) + calibrationData.xOffsetCorrection
+            } else {
+                targetX
+            }
+            
+            val correctedTargetY = if (calibrationData.isCalibrated) {
+                (targetY * calibrationData.yErrorCorrection) + calibrationData.yOffsetCorrection
+            } else {
+                targetY
+            }
+            
+            // 13. Apply Damping for Smooth Motion.
+            val previousPosition = lastPointerPosition ?: Pair(correctedTargetX, correctedTargetY)
+            val finalX = previousPosition.first + (correctedTargetX - previousPosition.first) * pointerDampingFactor
+            val finalY = previousPosition.second + (correctedTargetY - previousPosition.second) * pointerDampingFactor
 
             // 6. Clamp to screen bounds and draw the pointer.
             val clampedX = finalX.coerceIn(0f, width.toFloat())
@@ -942,6 +1024,17 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Calibration data info
         val calibrationInfoText = getCalibrationDataInfo()
         canvas.drawText(calibrationInfoText, 20f, 450f, textPaint)
+        
+        // Error correction info
+        if (calibrationData.isCalibrated) {
+            val errorCorrectionText = "X Corr: ${"%.2f".format(calibrationData.xErrorCorrection)}, Y Corr: ${"%.2f".format(calibrationData.yErrorCorrection)}"
+            val errorOffsetText = "X Off: ${"%.1f".format(calibrationData.xOffsetCorrection)}, Y Off: ${"%.1f".format(calibrationData.yOffsetCorrection)}"
+            val avgErrorText = "Avg Error: ${"%.1f".format(calibrationData.avgErrorMagnitude)}px"
+            
+            canvas.drawText(errorCorrectionText, 20f, 490f, textPaint)
+            canvas.drawText(errorOffsetText, 20f, 530f, textPaint)
+            canvas.drawText(avgErrorText, 20f, 570f, textPaint)
+        }
     }
     
     
@@ -959,7 +1052,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         return if (calibrationData.isCalibrated) {
             "Y Inf: ${"%.2f".format(calibrationData.avgYPositionInfluence)}, " +
             "Dist: ${"%.2f".format(calibrationData.avgDistanceRange)}, " +
-            "Gaze: ${"%.2f".format(calibrationData.avgGazeSensitivity)}"
+            "Gaze: ${"%.2f".format(calibrationData.avgGazeSensitivity)}, " +
+            "Error: ${"%.1f".format(calibrationData.avgErrorMagnitude)}px"
         } else {
             "No calibration data"
         }
