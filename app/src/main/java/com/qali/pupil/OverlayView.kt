@@ -15,6 +15,10 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.sqrt
+import java.io.*
+import kotlin.math.*
+import java.io.Serializable
 
 class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs), SensorEventListener {
 
@@ -55,24 +59,30 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     // Dynamic Calibration System
     private var isCalibrating = false
     private var calibrationPoints = mutableListOf<CalibrationPoint>()
-    private var calibrationTargetX = 0f
-    private var calibrationTargetY = 0f
-    private var calibrationStartTime = 0L
-    private val calibrationDuration = 3000L // 3 seconds per point
-    private val calibrationPointsNeeded = 5 // Number of calibration points
-    private var currentCalibrationPoint = 0
+    private var tapVisualizations = mutableListOf<TapVisualization>()
     private var calibrationData = CalibrationData()
+    private var calibrationClickCount = 0
+    private val maxCalibrationPoints = 20
+    private val outlierThreshold = 2.0f // Standard deviations for outlier detection
     
     // Calibration data classes
     private data class CalibrationPoint(
-        val targetX: Float,
-        val targetY: Float,
+        val tapX: Float,
+        val tapY: Float,
         val averageEyeY: Float,
         val averageSphereSize: Float,
         val gazeVelocity: Float,
         val yPositionInfluence: Float,
         val distanceRange: Float,
-        val adaptiveSensitivity: Float
+        val adaptiveSensitivity: Float,
+        val timestamp: Long = System.currentTimeMillis()
+    )
+    
+    private data class TapVisualization(
+        val x: Float,
+        val y: Float,
+        val startTime: Long,
+        val duration: Long = 1000L // 1 second display
     )
     
     private data class CalibrationData(
@@ -83,8 +93,9 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         var avgEyeYMax: Float = Float.MIN_VALUE,
         var avgSphereSizeMin: Float = Float.MAX_VALUE,
         var avgSphereSizeMax: Float = Float.MIN_VALUE,
-        var isCalibrated: Boolean = false
-    )
+        var isCalibrated: Boolean = false,
+        var clickCount: Int = 0
+    ) : Serializable
 
     // Static offsets for the pointer
     var staticX = 0f
@@ -251,55 +262,39 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         invalidate()
     }
     
-    // Calibration methods
+    // Dynamic Calibration Methods
     fun startCalibration() {
         isCalibrating = true
         calibrationPoints.clear()
-        currentCalibrationPoint = 0
-        calibrationData = CalibrationData()
-        generateCalibrationTargets()
+        tapVisualizations.clear()
+        calibrationClickCount = 0
+        loadCalibrationData()
         invalidate()
     }
     
     fun stopCalibration() {
         isCalibrating = false
+        saveCalibrationData()
         invalidate()
     }
     
     fun isCalibrationActive(): Boolean = isCalibrating
     
-    fun getCalibrationProgress(): Float {
+    fun getCalibrationProgress(): String {
         return if (isCalibrating) {
-            currentCalibrationPoint.toFloat() / calibrationPointsNeeded
+            "Calibrating... $calibrationClickCount clicks"
         } else {
-            1f
+            "Calibrated ✓ ($calibrationClickCount clicks)"
         }
     }
     
-    private fun generateCalibrationTargets() {
-        // Generate 5 calibration points across the screen
-        val targets = listOf(
-            Pair(width * 0.2f, height * 0.3f),  // Top-left
-            Pair(width * 0.8f, height * 0.3f),  // Top-right
-            Pair(width * 0.2f, height * 0.7f),  // Bottom-left
-            Pair(width * 0.8f, height * 0.7f),  // Bottom-right
-            Pair(width * 0.5f, height * 0.5f)   // Center
-        )
-        
-        if (currentCalibrationPoint < targets.size) {
-            calibrationTargetX = targets[currentCalibrationPoint].first
-            calibrationTargetY = targets[currentCalibrationPoint].second
-            calibrationStartTime = System.currentTimeMillis()
-        }
-    }
-    
-    private fun collectCalibrationData() {
+    fun handleCalibrationTap(tapX: Float, tapY: Float) {
         if (!isCalibrating || landmarks.isEmpty()) return
         
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - calibrationStartTime < calibrationDuration) return
+        // Add tap visualization
+        tapVisualizations.add(TapVisualization(tapX, tapY, System.currentTimeMillis()))
         
-        // Calculate current values
+        // Calculate current eye data
         val leftSphere = calculateEyeSphere(
             sphereLeftEyeIndices.mapNotNull { landmarks.getOrNull(it) },
             leftEyeX, leftEyeY, leftEyeZ, 0f, 0f, false
@@ -324,40 +319,74 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Store calibration point
         calibrationPoints.add(
             CalibrationPoint(
-                calibrationTargetX, calibrationTargetY, averageEyeY, averageSphereSize,
+                tapX, tapY, averageEyeY, averageSphereSize,
                 gazeVelocity, yPositionInfluence, distanceRange, adaptiveSensitivity
             )
         )
         
-        // Update calibration data ranges
-        calibrationData.avgEyeYMin = minOf(calibrationData.avgEyeYMin, averageEyeY)
-        calibrationData.avgEyeYMax = maxOf(calibrationData.avgEyeYMax, averageEyeY)
-        calibrationData.avgSphereSizeMin = minOf(calibrationData.avgSphereSizeMin, averageSphereSize)
-        calibrationData.avgSphereSizeMax = maxOf(calibrationData.avgSphereSizeMax, averageSphereSize)
+        calibrationClickCount++
         
-        currentCalibrationPoint++
+        // Clean data and update formulas every 20 clicks
+        if (calibrationClickCount % 20 == 0) {
+            cleanCalibrationData()
+            updateFormulasFromCalibration()
+        }
         
-        if (currentCalibrationPoint >= calibrationPointsNeeded) {
-            finishCalibration()
-        } else {
-            generateCalibrationTargets()
+        invalidate()
+    }
+    
+    private fun cleanCalibrationData() {
+        if (calibrationPoints.size < 10) return // Need minimum data
+        
+        // Remove outliers using statistical analysis
+        val yInfluences = calibrationPoints.map { it.yPositionInfluence }
+        val distanceRanges = calibrationPoints.map { it.distanceRange }
+        val gazeSensitivities = calibrationPoints.map { it.adaptiveSensitivity }
+        
+        val yMean = yInfluences.average()
+        val yStd = sqrt(yInfluences.map { (it - yMean).pow(2) }.average())
+        val distanceMean = distanceRanges.average()
+        val distanceStd = sqrt(distanceRanges.map { (it - distanceMean).pow(2) }.average())
+        val gazeMean = gazeSensitivities.average()
+        val gazeStd = sqrt(gazeSensitivities.map { (it - gazeMean).pow(2) }.average())
+        
+        // Remove outliers (beyond 2 standard deviations)
+        calibrationPoints.removeAll { point ->
+            val yOutlier = abs(point.yPositionInfluence - yMean) > outlierThreshold * yStd
+            val distanceOutlier = abs(point.distanceRange - distanceMean) > outlierThreshold * distanceStd
+            val gazeOutlier = abs(point.adaptiveSensitivity - gazeMean) > outlierThreshold * gazeStd
+            yOutlier || distanceOutlier || gazeOutlier
+        }
+        
+        // Keep only the most recent 15 points after cleaning
+        if (calibrationPoints.size > 15) {
+            calibrationPoints = calibrationPoints.takeLast(15).toMutableList()
         }
     }
     
-    private fun finishCalibration() {
+    private fun updateFormulasFromCalibration() {
         if (calibrationPoints.isEmpty()) return
         
-        // Calculate averages
+        // Calculate averages from cleaned data
         calibrationData.avgYPositionInfluence = calibrationPoints.map { it.yPositionInfluence }.average().toFloat()
         calibrationData.avgDistanceRange = calibrationPoints.map { it.distanceRange }.average().toFloat()
         calibrationData.avgGazeSensitivity = calibrationPoints.map { it.adaptiveSensitivity }.average().toFloat()
+        
+        // Update eye Y ranges
+        val eyeYs = calibrationPoints.map { it.averageEyeY }
+        calibrationData.avgEyeYMin = eyeYs.minOrNull() ?: 0f
+        calibrationData.avgEyeYMax = eyeYs.maxOrNull() ?: 0f
+        
+        // Update sphere size ranges
+        val sphereSizes = calibrationPoints.map { it.averageSphereSize }
+        calibrationData.avgSphereSizeMin = sphereSizes.minOrNull() ?: 0f
+        calibrationData.avgSphereSizeMax = sphereSizes.maxOrNull() ?: 0f
+        
         calibrationData.isCalibrated = true
+        calibrationData.clickCount = calibrationClickCount
         
-        // Update system parameters based on calibration
+        // Update system parameters
         updateSystemFromCalibration()
-        
-        isCalibrating = false
-        invalidate()
     }
     
     private fun updateSystemFromCalibration() {
@@ -368,10 +397,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         maxSphereSize = calibrationData.avgSphereSizeMax * 1.2f
         
         // Update eye Y ratios based on actual user range
-        val eyeYRange = calibrationData.avgEyeYMax - calibrationData.avgEyeYMin
         val screenHeight = height.toFloat()
-        
-        // Adjust typical eye range based on user's actual range
         val userMinRatio = calibrationData.avgEyeYMin / screenHeight
         val userMaxRatio = calibrationData.avgEyeYMax / screenHeight
         
@@ -380,6 +406,35 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         typicalEyeMaxYRatio = userMaxRatio.coerceIn(0.4f, 0.95f)
         
         invalidate()
+    }
+    
+    // File persistence methods
+    private fun saveCalibrationData() {
+        try {
+            val file = File(context.filesDir, "calibration_data.dat")
+            val outputStream = ObjectOutputStream(FileOutputStream(file))
+            outputStream.writeObject(calibrationData)
+            outputStream.close()
+        } catch (e: Exception) {
+            // Handle error silently
+        }
+    }
+    
+    private fun loadCalibrationData() {
+        try {
+            val file = File(context.filesDir, "calibration_data.dat")
+            if (file.exists()) {
+                val inputStream = ObjectInputStream(FileInputStream(file))
+                calibrationData = inputStream.readObject() as CalibrationData
+                inputStream.close()
+                
+                // Update system parameters from loaded data
+                updateSystemFromCalibration()
+            }
+        } catch (e: Exception) {
+            // Handle error silently, use defaults
+            calibrationData = CalibrationData()
+        }
     }
     
     
@@ -597,52 +652,76 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     // --- Calibration UI Drawing ---
     
     private fun drawCalibrationUI(canvas: Canvas) {
-        // Draw calibration target
-        val targetPaint = Paint().apply {
-            color = Color.RED
+        val currentTime = System.currentTimeMillis()
+        
+        // Draw tap visualizations
+        tapVisualizations.removeAll { currentTime - it.startTime > it.duration }
+        
+        val tapPaint = Paint().apply {
+            color = Color.CYAN
             style = Paint.Style.FILL
             isAntiAlias = true
         }
         
-        val targetStrokePaint = Paint().apply {
+        val tapStrokePaint = Paint().apply {
             color = Color.WHITE
             style = Paint.Style.STROKE
-            strokeWidth = 8f
+            strokeWidth = 4f
             isAntiAlias = true
         }
         
-        // Draw pulsing target circle
-        val pulseSize = 30f + (sin(System.currentTimeMillis() * 0.01) * 10f).toFloat()
-        canvas.drawCircle(calibrationTargetX, calibrationTargetY, pulseSize, targetStrokePaint)
-        canvas.drawCircle(calibrationTargetX, calibrationTargetY, pulseSize * 0.7f, targetPaint)
-        
-        // Draw progress indicator
-        val progress = getCalibrationProgress()
-        val progressText = "Calibration: ${(progress * 100).toInt()}% (${currentCalibrationPoint + 1}/$calibrationPointsNeeded)"
-        val progressPaint = Paint().apply {
-            color = Color.WHITE
-            textSize = 40f
-            style = Paint.Style.FILL
-            isAntiAlias = true
-            textAlign = Paint.Align.CENTER
+        // Draw tap circles with fade effect
+        tapVisualizations.forEach { tap ->
+            val elapsed = currentTime - tap.startTime
+            val alpha = (255 * (1f - elapsed.toFloat() / tap.duration)).toInt().coerceIn(0, 255)
+            val size = 20f + (elapsed.toFloat() / tap.duration) * 30f
+            
+            tapPaint.alpha = alpha
+            tapStrokePaint.alpha = alpha
+            
+            canvas.drawCircle(tap.x, tap.y, size, tapStrokePaint)
+            canvas.drawCircle(tap.x, tap.y, size * 0.7f, tapPaint)
         }
-        
-        canvas.drawText(progressText, width / 2f, height - 100f, progressPaint)
         
         // Draw instruction text
-        val instructionText = "Look at the red circle and tap to calibrate"
+        val instructionText = "Look at where you want to click, then tap anywhere"
         val instructionPaint = Paint().apply {
             color = Color.YELLOW
-            textSize = 30f
+            textSize = 32f
             style = Paint.Style.FILL
             isAntiAlias = true
             textAlign = Paint.Align.CENTER
+            setShadowLayer(4f, 0f, 0f, Color.BLACK)
         }
         
-        canvas.drawText(instructionText, width / 2f, height - 50f, instructionPaint)
+        canvas.drawText(instructionText, width / 2f, height - 100f, instructionPaint)
         
-        // Collect calibration data
-        collectCalibrationData()
+        // Draw calibration status
+        val statusText = getCalibrationProgress()
+        val statusPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 28f
+            style = Paint.Style.FILL
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            setShadowLayer(4f, 0f, 0f, Color.BLACK)
+        }
+        
+        canvas.drawText(statusText, width / 2f, height - 60f, statusPaint)
+        
+        // Draw data quality indicator
+        if (calibrationPoints.isNotEmpty()) {
+            val qualityText = "Data Points: ${calibrationPoints.size}"
+            val qualityPaint = Paint().apply {
+                color = Color.LTGRAY
+                textSize = 24f
+                style = Paint.Style.FILL
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+            
+            canvas.drawText(qualityText, width / 2f, height - 30f, qualityPaint)
+        }
     }
 
     // --- Main Drawing Logic ---
@@ -865,27 +944,34 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         canvas.drawText(adaptiveSensText, 20f, 330f, textPaint)
         canvas.drawText(eyeYInfluenceText, 20f, 370f, textPaint)
         canvas.drawText(normalizedEyeText, 20f, 410f, textPaint)
+        
+        // Calibration data info
+        val calibrationInfoText = getCalibrationDataInfo()
+        canvas.drawText(calibrationInfoText, 20f, 450f, textPaint)
     }
     
-    // Handle calibration click
-    fun handleCalibrationClick() {
-        if (isCalibrating) {
-            // Move to next calibration point immediately
-            currentCalibrationPoint++
-            if (currentCalibrationPoint >= calibrationPointsNeeded) {
-                finishCalibration()
-            } else {
-                generateCalibrationTargets()
-            }
-        }
+    // Handle calibration tap with coordinates
+    fun handleCalibrationTap(tapX: Float, tapY: Float) {
+        handleCalibrationTap(tapX, tapY)
     }
     
     // Get calibration status for UI
     fun getCalibrationStatus(): String {
         return when {
-            isCalibrating -> "Calibrating... ${currentCalibrationPoint + 1}/$calibrationPointsNeeded"
-            calibrationData.isCalibrated -> "Calibrated ✓"
+            isCalibrating -> "Calibrating... $calibrationClickCount clicks"
+            calibrationData.isCalibrated -> "Calibrated ✓ ($calibrationClickCount clicks)"
             else -> "Not Calibrated"
+        }
+    }
+    
+    // Get calibration data for debugging
+    fun getCalibrationDataInfo(): String {
+        return if (calibrationData.isCalibrated) {
+            "Y Inf: ${"%.2f".format(calibrationData.avgYPositionInfluence)}, " +
+            "Dist: ${"%.2f".format(calibrationData.avgDistanceRange)}, " +
+            "Gaze: ${"%.2f".format(calibrationData.avgGazeSensitivity)}"
+        } else {
+            "No calibration data"
         }
     }
 }

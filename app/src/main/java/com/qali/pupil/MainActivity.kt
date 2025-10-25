@@ -215,18 +215,10 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         calibrationStatus.text = overlayView.getCalibrationStatus()
     }
     
-    // Handle screen tap for calibration
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        if (overlayView.isCalibrationActive()) {
-            overlayView.handleCalibrationClick()
-        }
-    }
-    
     // Handle touch events for calibration
     override fun onTouchEvent(event: android.view.MotionEvent?): Boolean {
         if (overlayView.isCalibrationActive() && event?.action == android.view.MotionEvent.ACTION_DOWN) {
-            overlayView.handleCalibrationClick()
+            overlayView.handleCalibrationTap(event.x, event.y)
             return true
         }
         return super.onTouchEvent(event)
