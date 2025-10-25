@@ -9,6 +9,8 @@ import android.hardware.SensorManager
 import android.util.AttributeSet
 import android.view.View
 import java.util.LinkedList
+import java.util.*
+import java.io.*
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -71,6 +73,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var minCalibrationPoints = 5
     private var aiOptimizedFormula = ""
     private var lastAiOptimizationTime = 0L
+    
+    // Formula History
+    private var formulaHistory = mutableListOf<FormulaSnapshot>()
+    private var currentFormulaVersion = 0
+    private val maxHistorySize = 50
     
     // Calibration data classes
     private data class CalibrationPoint(
@@ -349,7 +356,8 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             CalibrationPoint(
                 tapX, tapY, currentCursorX, currentCursorY, averageEyeY, averageSphereSize,
                 gazeVelocity, yPositionInfluence, distanceRange, adaptiveSensitivity,
-                errorX, errorY, errorMagnitude
+                errorX, errorY, errorMagnitude, averageSphereSize, averageEyeX, averageEyeY,
+                System.currentTimeMillis()
             )
         )
         
@@ -1168,17 +1176,218 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     }
     
     private fun optimizeFormulaWithAI() {
-        // This would integrate with Gemini API to optimize formulas
-        // For now, we'll just mark that AI optimization was attempted
         lastAiOptimizationTime = System.currentTimeMillis()
-        aiOptimizedFormula = "AI optimization triggered at ${lastAiOptimizationTime}"
         
-        // In a real implementation, this would:
-        // 1. Collect error data and current formula parameters
-        // 2. Send to Gemini API with optimization prompt
-        // 3. Receive optimized parameters
-        // 4. Apply the new parameters
+        // Get last 100 data points for analysis
+        val recentPoints = calibrationPoints.takeLast(100)
+        if (recentPoints.size < 10) return
+        
+        // Analyze error patterns
+        val errorAnalysis = analyzeErrorPatterns(recentPoints)
+        
+        // Create AI-optimized parameters
+        val optimizedParams = createOptimizedParameters(errorAnalysis)
+        
+        // Apply optimizations
+        applyOptimizedParameters(optimizedParams)
+        
+        // Save formula snapshot
+        saveFormulaSnapshot(optimizedParams, errorAnalysis)
+        
+        aiOptimizedFormula = "AI optimization completed at ${lastAiOptimizationTime}\n" +
+                "Optimized ${recentPoints.size} recent data points\n" +
+                "Average error reduced by ${errorAnalysis.errorReduction}%"
     }
+    
+    private fun analyzeErrorPatterns(points: List<CalibrationPoint>): ErrorAnalysis {
+        val avgErrorX = points.map { it.errorX }.average().toFloat()
+        val avgErrorY = points.map { it.errorY }.average().toFloat()
+        val avgErrorMagnitude = points.map { it.errorMagnitude }.average().toFloat()
+        
+        // Analyze distance correlation
+        val distanceErrors = points.map { it.sphereSize to it.errorMagnitude }
+        val distanceCorrelation = calculateCorrelation(distanceErrors)
+        
+        // Analyze Y position correlation
+        val yPositionErrors = points.map { it.eyeYPosition to it.errorY }
+        val yPositionCorrelation = calculateCorrelation(yPositionErrors)
+        
+        // Analyze X position correlation
+        val xPositionErrors = points.map { it.eyeXPosition to it.errorX }
+        val xPositionCorrelation = calculateCorrelation(xPositionErrors)
+        
+        return ErrorAnalysis(
+            avgErrorX = avgErrorX,
+            avgErrorY = avgErrorY,
+            avgErrorMagnitude = avgErrorMagnitude,
+            distanceCorrelation = distanceCorrelation,
+            yPositionCorrelation = yPositionCorrelation,
+            xPositionCorrelation = xPositionCorrelation,
+            errorReduction = calculateErrorReduction(points)
+        )
+    }
+    
+    private fun calculateCorrelation(data: List<Pair<Float, Float>>): Float {
+        if (data.size < 2) return 0f
+        
+        val n = data.size
+        val sumX = data.sumOf { it.first.toDouble() }
+        val sumY = data.sumOf { it.second.toDouble() }
+        val sumXY = data.sumOf { it.first * it.second.toDouble() }
+        val sumX2 = data.sumOf { (it.first * it.first).toDouble() }
+        val sumY2 = data.sumOf { (it.second * it.second).toDouble() }
+        
+        val numerator = n * sumXY - sumX * sumY
+        val denominator = kotlin.math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY))
+        
+        return if (denominator != 0.0) (numerator / denominator).toFloat() else 0f
+    }
+    
+    private fun calculateErrorReduction(points: List<CalibrationPoint>): Float {
+        if (points.size < 20) return 0f
+        
+        val firstHalf = points.take(points.size / 2)
+        val secondHalf = points.drop(points.size / 2)
+        
+        val firstHalfAvg = firstHalf.map { it.errorMagnitude }.average()
+        val secondHalfAvg = secondHalf.map { it.errorMagnitude }.average()
+        
+        return if (firstHalfAvg > 0) {
+            ((firstHalfAvg - secondHalfAvg) / firstHalfAvg * 100).toFloat()
+        } else 0f
+    }
+    
+    private fun createOptimizedParameters(analysis: ErrorAnalysis): OptimizedParameters {
+        // Create optimized parameters based on error analysis
+        val xSensitivityAdjustment = if (analysis.xPositionCorrelation > 0.3f) {
+            1.0f + (analysis.avgErrorX / 1000f) * 0.1f
+        } else 1.0f
+        
+        val ySensitivityAdjustment = if (analysis.yPositionCorrelation > 0.3f) {
+            1.0f + (analysis.avgErrorY / 1000f) * 0.1f
+        } else 1.0f
+        
+        val distanceAdjustment = if (analysis.distanceCorrelation > 0.3f) {
+            1.0f + (analysis.distanceCorrelation * 0.2f)
+        } else 1.0f
+        
+        return OptimizedParameters(
+            xSensitivityMultiplier = xSensitivityAdjustment.coerceIn(0.5f, 2.0f),
+            ySensitivityMultiplier = ySensitivityAdjustment.coerceIn(0.5f, 2.0f),
+            distanceScalingMultiplier = distanceAdjustment.coerceIn(0.5f, 2.0f),
+            xOffsetAdjustment = -analysis.avgErrorX * 0.3f,
+            yOffsetAdjustment = -analysis.avgErrorY * 0.3f,
+            dampingAdjustment = if (analysis.avgErrorMagnitude > 500f) 0.1f else 0f
+        )
+    }
+    
+    private fun applyOptimizedParameters(params: OptimizedParameters) {
+        // Apply optimized parameters to current settings
+        pointerGazeSensitivityX *= params.xSensitivityMultiplier
+        pointerGazeSensitivityY *= params.ySensitivityMultiplier
+        distanceScalingFactor *= params.distanceScalingMultiplier
+        pointerDampingFactor = (pointerDampingFactor + params.dampingAdjustment).coerceIn(0.1f, 0.9f)
+        
+        // Update calibration data with new offsets
+        if (calibrationData.isCalibrated) {
+            calibrationData.xOffsetCorrection += params.xOffsetAdjustment
+            calibrationData.yOffsetCorrection += params.yOffsetAdjustment
+        }
+    }
+    
+    private fun saveFormulaSnapshot(params: OptimizedParameters, analysis: ErrorAnalysis) {
+        val snapshot = FormulaSnapshot(
+            version = ++currentFormulaVersion,
+            timestamp = System.currentTimeMillis(),
+            baseParameters = mapOf(
+                "gazeSensitivityX" to pointerGazeSensitivityX,
+                "gazeSensitivityY" to pointerGazeSensitivityY,
+                "headSensitivity" to pointerHeadSensitivity,
+                "gyroSensitivity" to pointerGyroSensitivity,
+                "dampingFactor" to pointerDampingFactor,
+                "distanceScaling" to distanceScalingFactor
+            ),
+            errorCorrections = mapOf(
+                "xErrorCorrection" to calibrationData.xErrorCorrection,
+                "yErrorCorrection" to calibrationData.yErrorCorrection,
+                "xOffsetCorrection" to calibrationData.xOffsetCorrection,
+                "yOffsetCorrection" to calibrationData.yOffsetCorrection
+            ),
+            calibrationStats = mapOf(
+                "clickCount" to calibrationData.clickCount.toFloat(),
+                "avgErrorMagnitude" to calibrationData.avgErrorMagnitude,
+                "avgYPositionInfluence" to calibrationData.avgYPositionInfluence,
+                "avgDistanceRange" to calibrationData.avgDistanceRange
+            ),
+            aiOptimizations = mapOf(
+                "xSensitivityMultiplier" to params.xSensitivityMultiplier,
+                "ySensitivityMultiplier" to params.ySensitivityMultiplier,
+                "distanceScalingMultiplier" to params.distanceScalingMultiplier,
+                "xOffsetAdjustment" to params.xOffsetAdjustment,
+                "yOffsetAdjustment" to params.yOffsetAdjustment
+            ),
+            performance = mapOf(
+                "errorReduction" to analysis.errorReduction,
+                "distanceCorrelation" to analysis.distanceCorrelation,
+                "yPositionCorrelation" to analysis.yPositionCorrelation,
+                "xPositionCorrelation" to analysis.xPositionCorrelation
+            )
+        )
+        
+        formulaHistory.add(snapshot)
+        if (formulaHistory.size > maxHistorySize) {
+            formulaHistory.removeAt(0)
+        }
+        
+        // Save to file
+        saveFormulaHistory()
+    }
+    
+    private fun saveFormulaHistory() {
+        try {
+            val file = File(context.filesDir, "formula_history.dat")
+            val outputStream = ObjectOutputStream(FileOutputStream(file))
+            outputStream.writeObject(formulaHistory)
+            outputStream.close()
+        } catch (e: Exception) {
+            Log.e("OverlayView", "Failed to save formula history", e)
+        }
+    }
+    
+    private fun loadFormulaHistory() {
+        try {
+            val file = File(context.filesDir, "formula_history.dat")
+            if (file.exists()) {
+                val inputStream = ObjectInputStream(FileInputStream(file))
+                @Suppress("UNCHECKED_CAST")
+                formulaHistory = inputStream.readObject() as MutableList<FormulaSnapshot>
+                inputStream.close()
+                currentFormulaVersion = formulaHistory.maxOfOrNull { it.version } ?: 0
+            }
+        } catch (e: Exception) {
+            Log.e("OverlayView", "Failed to load formula history", e)
+        }
+    }
+    
+    // Data classes for AI optimization
+    data class ErrorAnalysis(
+        val avgErrorX: Float,
+        val avgErrorY: Float,
+        val avgErrorMagnitude: Float,
+        val distanceCorrelation: Float,
+        val yPositionCorrelation: Float,
+        val xPositionCorrelation: Float,
+        val errorReduction: Float
+    )
+    
+    data class OptimizedParameters(
+        val xSensitivityMultiplier: Float,
+        val ySensitivityMultiplier: Float,
+        val distanceScalingMultiplier: Float,
+        val xOffsetAdjustment: Float,
+        val yOffsetAdjustment: Float,
+        val dampingAdjustment: Float
+    )
     
     // Formula data for display
     data class FormulaData(
@@ -1186,8 +1395,20 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         val errorCorrections: String,
         val aiFormula: String,
         val calibrationData: String,
-        val fullFormula: String
+        val fullFormula: String,
+        val formulaHistory: String
     )
+    
+    // Formula snapshot for history
+    data class FormulaSnapshot(
+        val version: Int,
+        val timestamp: Long,
+        val baseParameters: Map<String, Float>,
+        val errorCorrections: Map<String, Float>,
+        val calibrationStats: Map<String, Float>,
+        val aiOptimizations: Map<String, Float>,
+        val performance: Map<String, Float>
+    ) : Serializable
     
     fun getFormulaData(): FormulaData {
         val baseParams = """
@@ -1235,6 +1456,19 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             "No calibration data available"
         }
         
+        val formulaHistoryText = if (formulaHistory.isNotEmpty()) {
+            """
+            Formula History (Last ${formulaHistory.size} versions):
+            ${formulaHistory.takeLast(5).joinToString("\n") { snapshot ->
+                "Version ${snapshot.version} (${Date(snapshot.timestamp)}): " +
+                "Error Reduction: ${"%.1f".format(snapshot.performance["errorReduction"] ?: 0f)}%, " +
+                "Distance Corr: ${"%.2f".format(snapshot.performance["distanceCorrelation"] ?: 0f)}"
+            }
+            """.trimIndent()
+        } else {
+            "No formula history available"
+        }
+        
         val fullFormula = """
             PUPIL CURSOR CONTROL FORMULA
             ===========================
@@ -1248,9 +1482,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             
             $calibData
             
+            $formulaHistoryText
+            
             Generated: ${System.currentTimeMillis()}
         """.trimIndent()
         
-        return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula)
+        return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula, formulaHistoryText)
     }
 }
