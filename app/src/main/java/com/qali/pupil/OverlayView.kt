@@ -343,10 +343,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
             rightEyeX, rightEyeY, rightEyeZ, 0f, 0f, true
         )
         
+        val averageEyeX = (leftSphere.centerX + rightSphere.centerX) / 2f
         val averageEyeY = (leftSphere.centerY + rightSphere.centerY) / 2f
         val averageSphereSize = (leftSphere.radius + rightSphere.radius) / 2f
         val gazeVelocity = calculateGazeTipChange(
-            (leftSphere.centerX + rightSphere.centerX) / 2f,
+            averageEyeX,
             averageEyeY
         )
         val yPositionInfluence = calculateYPositionInfluence(averageEyeY, height.toFloat())
@@ -1460,17 +1461,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         }
         
         val formulaHistoryText = if (formulaHistory.isNotEmpty()) {
-            """
-            Formula History (Last ${formulaHistory.size} versions):
-            ${
-                val historyEntries = formulaHistory.takeLast(5).joinToString("\n") { snapshot ->
-                    "Version ${snapshot.version} (${Date(snapshot.timestamp)}): " +
-                    "Error Reduction: ${"%.1f".format(snapshot.performance["errorReduction"] ?: 0f)}%, " +
-                    "Distance Corr: ${"%.2f".format(snapshot.performance["distanceCorrelation"] ?: 0f)}"
-                }
-                historyEntries
+            val historyEntries = formulaHistory.takeLast(5).joinToString("\n") { snapshot ->
+                "Version ${snapshot.version} (${Date(snapshot.timestamp)}): " +
+                "Error Reduction: ${"%.1f".format(snapshot.performance["errorReduction"] ?: 0f)}%, " +
+                "Distance Corr: ${"%.2f".format(snapshot.performance["distanceCorrelation"] ?: 0f)}"
             }
-            """.trimIndent()
+            "Formula History (Last ${formulaHistory.size} versions):\n$historyEntries"
         } else {
             "No formula history available"
         }
