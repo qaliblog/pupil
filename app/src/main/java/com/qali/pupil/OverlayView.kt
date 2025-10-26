@@ -73,7 +73,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     private var geminiApiKey = ""
     private var geminiModelName = "gemini-1.5-flash"
     private var debugInfoEnabled = false
-    private var errorThreshold = 20f
+    private var errorThreshold = 100f
     private var minCalibrationPoints = 5
     private var aiOptimizedFormula = ""
     private var lastAiOptimizationTime = 0L
@@ -1301,12 +1301,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         if (calibrationPoints.size < minCalibrationPoints) return
         if (isAiPrompting) return // Prevent multiple simultaneous optimizations
         
-        // Only run AI optimization every 50 clicks to prevent performance issues
-        if (calibrationClickCount % 50 != 0) return
+        // Run AI optimization every 20 clicks for more responsive updates
+        if (calibrationClickCount % 20 != 0) return
         
-        // Check if we have enough high-error points
+        // Check if we have enough high-error points (reduced threshold)
         val highErrorPoints = calibrationPoints.filter { it.errorMagnitude > errorThreshold }
-        if (highErrorPoints.size >= 10) { // Increased threshold
+        if (highErrorPoints.size >= 5) { // Reduced threshold for more frequent optimization
             // Trigger AI optimization
             optimizeFormulaWithAI()
         }
@@ -1328,24 +1328,44 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         // Analyze error patterns
         val errorAnalysis = analyzeErrorPatterns(recentPoints)
         
-        // Create AI-optimized parameters
-        val optimizedParams = createOptimizedParameters(errorAnalysis)
-        
-        // Apply optimizations
-        applyOptimizedParameters(optimizedParams)
-        
-        // Update system with optimized values
-        updateSystemFromJsonFormula()
-        
-        // Save formula snapshot
-        saveFormulaSnapshot(optimizedParams, errorAnalysis)
-        
-        val advancedFormulas = generateAdvancedFormula(errorAnalysis)
-        
-        aiOptimizedFormula = "AI optimization completed at ${lastAiOptimizationTime}\n" +
-                "Optimized ${recentPoints.size} recent data points\n" +
-                "Average error reduced by ${errorAnalysis.errorReduction}%\n\n" +
-                "Advanced Formula Variations:\n$advancedFormulas"
+        // Make API call to Gemini for AI optimization
+        Thread {
+            try {
+                val optimizedParams = callGeminiForOptimization(errorAnalysis, recentPoints)
+                
+                // Apply optimizations on main thread
+                activity?.runOnUiThread {
+                    applyOptimizedParameters(optimizedParams)
+                    updateSystemFromJsonFormula()
+                    saveFormulaSnapshot(optimizedParams, errorAnalysis)
+                    
+                    val advancedFormulas = generateAdvancedFormula(errorAnalysis)
+                    
+                    aiOptimizedFormula = "AI optimization completed at ${lastAiOptimizationTime}\n" +
+                            "Optimized ${recentPoints.size} recent data points\n" +
+                            "Average error reduced by ${errorAnalysis.errorReduction}%\n\n" +
+                            "Advanced Formula Variations:\n$advancedFormulas"
+                    
+                    isAiPrompting = false
+                    invalidate()
+                }
+            } catch (e: Exception) {
+                // Fallback to local optimization if API fails
+                activity?.runOnUiThread {
+                    val optimizedParams = createOptimizedParameters(errorAnalysis)
+                    applyOptimizedParameters(optimizedParams)
+                    updateSystemFromJsonFormula()
+                    saveFormulaSnapshot(optimizedParams, errorAnalysis)
+                    
+                    aiOptimizedFormula = "AI optimization completed (local fallback) at ${lastAiOptimizationTime}\n" +
+                            "Optimized ${recentPoints.size} recent data points\n" +
+                            "Average error reduced by ${errorAnalysis.errorReduction}%"
+                    
+                    isAiPrompting = false
+                    invalidate()
+                }
+            }
+        }.start()
     }
     
     private fun analyzeErrorPatterns(points: List<CalibrationPoint>): ErrorAnalysis {
@@ -1929,5 +1949,263 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         """.trimIndent()
         
         return FormulaData(baseParams, errorCorrections, aiFormula, calibData, fullFormula, formulaHistoryText, jsonFormula)
+    }
+    
+    private fun callGeminiForOptimization(errorAnalysis: ErrorAnalysis, recentPoints: List<CalibrationPoint>): OptimizedParameters {
+        val prompt = buildGeminiPrompt(errorAnalysis, recentPoints)
+        
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${geminiApiKey}"
+        
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        
+        val requestBody = """
+        {
+            "contents": [{
+                "parts": [{
+                    "text": "$prompt"
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 1024
+            }
+        }
+        """.trimIndent()
+        
+        connection.outputStream.use { it.write(requestBody.toByteArray()) }
+        
+        val responseCode = connection.responseCode
+        if (responseCode != 200) {
+            throw Exception("API call failed with code: $responseCode")
+        }
+        
+        val response = connection.inputStream.bufferedReader().readText()
+        return parseGeminiResponse(response)
+    }
+    
+    private fun buildGeminiPrompt(errorAnalysis: ErrorAnalysis, recentPoints: List<CalibrationPoint>): String {
+        val avgError = recentPoints.map { it.errorMagnitude }.average()
+        val xErrors = recentPoints.map { it.errorX }
+        val yErrors = recentPoints.map { it.errorY }
+        
+        return """
+        PUPIL CURSOR CONTROL OPTIMIZATION
+        =================================
+        
+        Current Parameters:
+        - Gaze X Sensitivity: $pointerGazeSensitivityX
+        - Gaze Y Sensitivity: $pointerGazeSensitivityY
+        - Head Sensitivity: $pointerHeadSensitivity
+        - Damping Factor: $pointerDampingFactor
+        
+        Error Analysis:
+        - Average Error: ${avgError}px
+        - X Position Correlation: ${errorAnalysis.xPositionCorrelation}
+        - Y Position Correlation: ${errorAnalysis.yPositionCorrelation}
+        - Distance Correlation: ${errorAnalysis.distanceCorrelation}
+        
+        Recent Data Points (${recentPoints.size}):
+        ${recentPoints.takeLast(10).joinToString("\n") { 
+            "Error: ${it.errorMagnitude}px, X: ${it.errorX}px, Y: ${it.errorY}px, Distance: ${it.sphereSize}"
+        }}
+        
+        DATA ANALYSIS GUIDANCE:
+        ======================
+        
+        Look for these patterns in the data:
+        
+        1. Y-AXIS ISSUES:
+           - If Y errors are consistently high (>200px) while X errors are low
+           - If Y errors are always positive or always negative (systematic bias)
+           - If Y errors increase with distance (scaling problem)
+           → Focus on gazeSensitivityY and yCorrectionFactor
+        
+        2. X-AXIS ISSUES:
+           - If X errors are consistently high while Y errors are low
+           - If X errors show left/right bias patterns
+           - If X errors correlate with head movement
+           → Focus on gazeSensitivityX and xCorrectionFactor
+        
+        3. RESPONSIVENESS ISSUES:
+           - If errors are very high (>500px) consistently
+           - If errors don't improve with more calibration points
+           - If cursor seems to lag behind eye movement
+           → Increase sensitivities, decrease damping
+        
+        4. STABILITY ISSUES:
+           - If errors vary wildly between similar eye positions
+           - If cursor jumps around randomly
+           - If small eye movements cause large cursor jumps
+           → Increase damping, reduce sensitivities
+        
+        5. SYSTEMATIC BIAS:
+           - If errors always go in one direction
+           - If cursor consistently overshoots or undershoots
+           - If there's a consistent offset from target
+           → Adjust correction factors and consider offsets
+        
+        OPTIMIZATION RULES:
+        ==================
+        
+        1. ALLOWED OPERATIONS:
+           - Multiply by factors between 0.1 and 5.0
+           - Add/subtract offsets between -2.0 and +2.0
+           - Apply exponential scaling: value * exp(factor * 0.1 to 2.0)
+           - Apply logarithmic scaling: value * ln(factor + 1) where factor is 0.1 to 3.0
+           - Apply quadratic adjustments: value + (error^2 * 0.0001 to 0.01)
+        
+        2. PARAMETER CONSTRAINTS:
+           - gazeSensitivityX: Range 0.5 to 50.0 (current: $pointerGazeSensitivityX)
+           - gazeSensitivityY: Range 0.5 to 50.0 (current: $pointerGazeSensitivityY)
+           - headSensitivity: Range 0.1 to 2.0 (current: $pointerHeadSensitivity)
+           - dampingFactor: Range 0.1 to 1.0 (current: $pointerDampingFactor)
+           - xCorrectionFactor: Range 0.5 to 2.0 (current: ${calibrationData.xErrorCorrection})
+           - yCorrectionFactor: Range 0.5 to 2.0 (current: ${calibrationData.yErrorCorrection})
+        
+        3. OPTIMIZATION STRATEGY:
+           - If X errors are high: increase gazeSensitivityX or xCorrectionFactor
+           - If Y errors are high: increase gazeSensitivityY or yCorrectionFactor
+           - If cursor is jittery: increase dampingFactor
+           - If cursor is too slow: decrease dampingFactor, increase sensitivities
+           - If distance correlation is high: adjust headSensitivity
+        
+        4. EXAMPLE THINKING PATTERNS:
+           =========================
+           
+           PROBLEM: "Y isn't changing at all"
+           THINKING: "The Y sensitivity might be too low or the Y correction factor is wrong. 
+                      The user's eyes are moving vertically but cursor stays horizontal. 
+                      I should increase gazeSensitivityY significantly (maybe 2-3x) and 
+                      check if yCorrectionFactor needs adjustment. Also consider if the 
+                      Y position influence calculation needs tweaking."
+           SOLUTION: Increase gazeSensitivityY from 15.0 to 30.0, adjust yCorrectionFactor to 1.2
+           
+           PROBLEM: "Cursor moves too fast and overshoots targets"
+           THINKING: "The sensitivities are too high, causing overcorrection. The damping 
+                      might be too low, allowing rapid movements. I should reduce both 
+                      X and Y sensitivities by 20-30% and increase damping factor."
+           SOLUTION: Reduce gazeSensitivityX by 25%, gazeSensitivityY by 25%, increase dampingFactor to 0.9
+           
+           PROBLEM: "Cursor is very slow to respond"
+           THINKING: "The sensitivities are too low or damping is too high. The user 
+                      has to move their eyes a lot to get small cursor movements. 
+                      I should increase sensitivities and reduce damping for more 
+                      responsive control."
+           SOLUTION: Increase gazeSensitivityX by 40%, gazeSensitivityY by 40%, reduce dampingFactor to 0.7
+           
+           PROBLEM: "Cursor drifts away from where I'm looking"
+           THINKING: "There might be systematic bias in the calculations. The correction 
+                      factors could be wrong, or there's an offset issue. I should 
+                      adjust the correction factors and maybe add small offsets to 
+                      compensate for the drift."
+           SOLUTION: Adjust xCorrectionFactor to 0.95, yCorrectionFactor to 1.05
+           
+           PROBLEM: "Cursor jumps around randomly"
+           THINKING: "The system is too sensitive to small eye movements or there's 
+                      noise in the data. I should increase damping to smooth out the 
+                      movements and maybe reduce sensitivities slightly to make it 
+                      more stable."
+           SOLUTION: Increase dampingFactor to 0.95, reduce sensitivities by 15%
+           
+           PROBLEM: "Works well horizontally but not vertically"
+           THINKING: "The Y-axis calculation might be fundamentally different from X-axis. 
+                      The Y position influence or Y correction factor could be wrong. 
+                      I should focus specifically on Y parameters and maybe use a 
+                      different scaling approach for vertical movement."
+           SOLUTION: Increase gazeSensitivityY by 50%, adjust yCorrectionFactor to 1.3, 
+                     consider if Y position influence needs different calculation
+        
+        REQUIRED JSON RESPONSE FORMAT:
+        =============================
+        
+        You MUST respond with ONLY a valid JSON object in this exact format:
+        
+        {
+            "gazeSensitivityX": <float_value>,
+            "gazeSensitivityY": <float_value>,
+            "headSensitivity": <float_value>,
+            "dampingFactor": <float_value>,
+            "xCorrectionFactor": <float_value>,
+            "yCorrectionFactor": <float_value>,
+            "optimizationReason": "<brief explanation of changes>",
+            "expectedErrorReduction": <percentage_float>
+        }
+        
+        EXAMPLE RESPONSE:
+        {
+            "gazeSensitivityX": 3.2,
+            "gazeSensitivityY": 18.5,
+            "headSensitivity": 0.8,
+            "dampingFactor": 0.85,
+            "xCorrectionFactor": 1.15,
+            "yCorrectionFactor": 1.05,
+            "optimizationReason": "Increased Y sensitivity for better vertical movement, reduced damping for more responsive cursor",
+            "expectedErrorReduction": 25.5
+        }
+        
+        Focus on reducing the average error of ${avgError}px. Make conservative adjustments (10-30% changes) to avoid over-optimization.
+        """.trimIndent()
+    }
+    
+    private fun parseGeminiResponse(response: String): OptimizedParameters {
+        try {
+            val json = org.json.JSONObject(response)
+            val candidates = json.getJSONArray("candidates")
+            val content = candidates.getJSONObject(0).getJSONObject("content")
+            val parts = content.getJSONArray("parts")
+            val text = parts.getJSONObject(0).getString("text")
+            
+            // Extract JSON from the response text
+            val jsonStart = text.indexOf("{")
+            val jsonEnd = text.lastIndexOf("}") + 1
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                val jsonText = text.substring(jsonStart, jsonEnd)
+                val params = org.json.JSONObject(jsonText)
+                
+                // Validate parameter ranges
+                val gazeSensitivityX = params.optDouble("gazeSensitivityX", pointerGazeSensitivityX.toDouble()).toFloat().coerceIn(0.5f, 50.0f)
+                val gazeSensitivityY = params.optDouble("gazeSensitivityY", pointerGazeSensitivityY.toDouble()).toFloat().coerceIn(0.5f, 50.0f)
+                val headSensitivity = params.optDouble("headSensitivity", pointerHeadSensitivity.toDouble()).toFloat().coerceIn(0.1f, 2.0f)
+                val dampingFactor = params.optDouble("dampingFactor", pointerDampingFactor.toDouble()).toFloat().coerceIn(0.1f, 1.0f)
+                val xCorrectionFactor = params.optDouble("xCorrectionFactor", calibrationData.xErrorCorrection.toDouble()).toFloat().coerceIn(0.5f, 2.0f)
+                val yCorrectionFactor = params.optDouble("yCorrectionFactor", calibrationData.yErrorCorrection.toDouble()).toFloat().coerceIn(0.5f, 2.0f)
+                
+                // Log optimization details
+                val reason = params.optString("optimizationReason", "No reason provided")
+                val expectedReduction = params.optDouble("expectedErrorReduction", 0.0)
+                
+                android.util.Log.d("AI_OPTIMIZATION", "AI Optimization Applied:")
+                android.util.Log.d("AI_OPTIMIZATION", "Reason: $reason")
+                android.util.Log.d("AI_OPTIMIZATION", "Expected Error Reduction: ${expectedReduction}%")
+                android.util.Log.d("AI_OPTIMIZATION", "New Parameters: X=${gazeSensitivityX}, Y=${gazeSensitivityY}, Head=${headSensitivity}, Damping=${dampingFactor}")
+                
+                return OptimizedParameters(
+                    gazeSensitivityX = gazeSensitivityX,
+                    gazeSensitivityY = gazeSensitivityY,
+                    headSensitivity = headSensitivity,
+                    dampingFactor = dampingFactor,
+                    xCorrectionFactor = xCorrectionFactor,
+                    yCorrectionFactor = yCorrectionFactor
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AI_OPTIMIZATION", "Failed to parse AI response: ${e.message}")
+            // Fallback to default values if parsing fails
+        }
+        
+        // Return current values as fallback
+        return OptimizedParameters(
+            gazeSensitivityX = pointerGazeSensitivityX,
+            gazeSensitivityY = pointerGazeSensitivityY,
+            headSensitivity = pointerHeadSensitivity,
+            dampingFactor = pointerDampingFactor,
+            xCorrectionFactor = calibrationData.xErrorCorrection,
+            yCorrectionFactor = calibrationData.yErrorCorrection
+        )
     }
 }
