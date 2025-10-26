@@ -1296,19 +1296,45 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     
     // Check if AI optimization should be triggered
     private fun checkAiOptimization() {
-        if (!aiOptimizationEnabled || geminiApiKey.isEmpty()) return
-        if (!isCalibrating) return
-        if (calibrationPoints.size < minCalibrationPoints) return
-        if (isAiPrompting) return // Prevent multiple simultaneous optimizations
+        android.util.Log.d("AI_OPTIMIZATION", "Checking AI optimization: enabled=$aiOptimizationEnabled, apiKeyEmpty=${geminiApiKey.isEmpty()}, calibrating=$isCalibrating, points=${calibrationPoints.size}, clicks=$calibrationClickCount")
+        
+        if (!aiOptimizationEnabled) {
+            android.util.Log.d("AI_OPTIMIZATION", "AI optimization disabled")
+            return
+        }
+        if (geminiApiKey.isEmpty()) {
+            android.util.Log.d("AI_OPTIMIZATION", "Gemini API key not set")
+            return
+        }
+        if (!isCalibrating) {
+            android.util.Log.d("AI_OPTIMIZATION", "Not calibrating")
+            return
+        }
+        if (calibrationPoints.size < minCalibrationPoints) {
+            android.util.Log.d("AI_OPTIMIZATION", "Not enough calibration points: ${calibrationPoints.size} < $minCalibrationPoints")
+            return
+        }
+        if (isAiPrompting) {
+            android.util.Log.d("AI_OPTIMIZATION", "AI already prompting")
+            return
+        }
         
         // Run AI optimization every 20 clicks for more responsive updates
-        if (calibrationClickCount % 20 != 0) return
+        if (calibrationClickCount % 20 != 0) {
+            android.util.Log.d("AI_OPTIMIZATION", "Not time for optimization yet: $calibrationClickCount % 20 = ${calibrationClickCount % 20}")
+            return
+        }
         
         // Check if we have enough high-error points (reduced threshold)
         val highErrorPoints = calibrationPoints.filter { it.errorMagnitude > errorThreshold }
+        android.util.Log.d("AI_OPTIMIZATION", "High error points: ${highErrorPoints.size} (threshold: $errorThreshold)")
+        
         if (highErrorPoints.size >= 5) { // Reduced threshold for more frequent optimization
+            android.util.Log.d("AI_OPTIMIZATION", "Triggering AI optimization!")
             // Trigger AI optimization
             optimizeFormulaWithAI()
+        } else {
+            android.util.Log.d("AI_OPTIMIZATION", "Not enough high-error points: ${highErrorPoints.size} < 5")
         }
     }
     
@@ -1952,9 +1978,11 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
     }
     
     private fun callGeminiForOptimization(errorAnalysis: ErrorAnalysis, recentPoints: List<CalibrationPoint>): OptimizedParameters {
+        android.util.Log.d("AI_OPTIMIZATION", "Making Gemini API call...")
         val prompt = buildGeminiPrompt(errorAnalysis, recentPoints)
         
         val url = "https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${geminiApiKey}"
+        android.util.Log.d("AI_OPTIMIZATION", "API URL: $url")
         
         val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         connection.requestMethod = "POST"
@@ -1980,11 +2008,16 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         connection.outputStream.use { it.write(requestBody.toByteArray()) }
         
         val responseCode = connection.responseCode
+        android.util.Log.d("AI_OPTIMIZATION", "API response code: $responseCode")
+        
         if (responseCode != 200) {
-            throw Exception("API call failed with code: $responseCode")
+            val errorResponse = connection.errorStream?.bufferedReader()?.readText() ?: "No error details"
+            android.util.Log.e("AI_OPTIMIZATION", "API call failed: $responseCode - $errorResponse")
+            throw Exception("API call failed with code: $responseCode - $errorResponse")
         }
         
         val response = connection.inputStream.bufferedReader().readText()
+        android.util.Log.d("AI_OPTIMIZATION", "API response: $response")
         return parseGeminiResponse(response)
     }
     
