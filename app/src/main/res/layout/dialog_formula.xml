@@ -108,6 +108,15 @@
             android:layout_height="wrap_content"
             android:text="Export Formula to File"
             android:backgroundTint="#9C27B0"
+            android:textColor="@android:color/white"
+            android:layout_marginBottom="8dp"/>
+
+        <Button
+            android:id="@+id/aiOptimizeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🤖 Trigger AI Optimization"
+            android:backgroundTint="#4CAF50"
             android:textColor="@android:color/white"/>
 
     </LinearLayout>

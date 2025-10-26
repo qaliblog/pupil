@@ -1292,6 +1292,19 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         aiOptimizationEnabled = enabled
         geminiApiKey = apiKey
         geminiModelName = modelName
+        android.util.Log.d("AI_OPTIMIZATION", "AI optimization settings updated: enabled=$enabled, apiKeyLength=${apiKey.length}, model=$modelName")
+    }
+    
+    // Manual trigger for AI optimization (for testing)
+    fun triggerAiOptimization() {
+        android.util.Log.d("AI_OPTIMIZATION", "Manual AI optimization triggered")
+        if (calibrationPoints.size >= 5) {
+            val recentPoints = calibrationPoints.takeLast(100)
+            val errorAnalysis = analyzeErrorPatterns(recentPoints)
+            optimizeFormulaWithAI()
+        } else {
+            android.util.Log.d("AI_OPTIMIZATION", "Not enough calibration points for manual trigger: ${calibrationPoints.size}")
+        }
     }
     
     // Check if AI optimization should be triggered

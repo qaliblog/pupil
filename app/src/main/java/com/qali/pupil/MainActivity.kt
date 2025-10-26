@@ -345,6 +345,7 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         val calibrationDataText = dialogView.findViewById<TextView>(R.id.calibrationDataText)
         val copyButton = dialogView.findViewById<Button>(R.id.copyFormulaButton)
         val exportButton = dialogView.findViewById<Button>(R.id.exportFormulaButton)
+        val aiOptimizeButton = dialogView.findViewById<Button>(R.id.aiOptimizeButton)
         
         // Get formula data from overlay view
         val formulaData = overlayView.getFormulaData()
@@ -370,6 +371,11 @@ override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         
         exportButton.setOnClickListener {
             exportFormulaToFile(formulaData.fullFormula)
+        }
+        
+        aiOptimizeButton?.setOnClickListener {
+            overlayView.triggerAiOptimization()
+            Toast.makeText(this, "AI optimization triggered", Toast.LENGTH_SHORT).show()
         }
         
         dialog.show()
