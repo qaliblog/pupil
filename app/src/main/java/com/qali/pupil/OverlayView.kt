@@ -1334,7 +1334,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 val optimizedParams = callGeminiForOptimization(errorAnalysis, recentPoints)
                 
                 // Apply optimizations on main thread
-                activity?.runOnUiThread {
+                (context as? android.app.Activity)?.runOnUiThread {
                     applyOptimizedParameters(optimizedParams)
                     updateSystemFromJsonFormula()
                     saveFormulaSnapshot(optimizedParams, errorAnalysis)
@@ -1351,7 +1351,7 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 }
             } catch (e: Exception) {
                 // Fallback to local optimization if API fails
-                activity?.runOnUiThread {
+                (context as? android.app.Activity)?.runOnUiThread {
                     val optimizedParams = createOptimizedParameters(errorAnalysis)
                     applyOptimizedParameters(optimizedParams)
                     updateSystemFromJsonFormula()
@@ -2185,12 +2185,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
                 android.util.Log.d("AI_OPTIMIZATION", "New Parameters: X=${gazeSensitivityX}, Y=${gazeSensitivityY}, Head=${headSensitivity}, Damping=${dampingFactor}")
                 
                 return OptimizedParameters(
-                    gazeSensitivityX = gazeSensitivityX,
-                    gazeSensitivityY = gazeSensitivityY,
-                    headSensitivity = headSensitivity,
-                    dampingFactor = dampingFactor,
-                    xCorrectionFactor = xCorrectionFactor,
-                    yCorrectionFactor = yCorrectionFactor
+                    xSensitivityMultiplier = gazeSensitivityX / pointerGazeSensitivityX,
+                    ySensitivityMultiplier = gazeSensitivityY / pointerGazeSensitivityY,
+                    distanceScalingMultiplier = 1.0f,
+                    xOffsetAdjustment = (xCorrectionFactor - calibrationData.xErrorCorrection) * 0.1f,
+                    yOffsetAdjustment = (yCorrectionFactor - calibrationData.yErrorCorrection) * 0.1f,
+                    dampingAdjustment = dampingFactor - pointerDampingFactor
                 )
             }
         } catch (e: Exception) {
@@ -2200,12 +2200,12 @@ class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs),
         
         // Return current values as fallback
         return OptimizedParameters(
-            gazeSensitivityX = pointerGazeSensitivityX,
-            gazeSensitivityY = pointerGazeSensitivityY,
-            headSensitivity = pointerHeadSensitivity,
-            dampingFactor = pointerDampingFactor,
-            xCorrectionFactor = calibrationData.xErrorCorrection,
-            yCorrectionFactor = calibrationData.yErrorCorrection
+            xSensitivityMultiplier = 1.0f,
+            ySensitivityMultiplier = 1.0f,
+            distanceScalingMultiplier = 1.0f,
+            xOffsetAdjustment = 0.0f,
+            yOffsetAdjustment = 0.0f,
+            dampingAdjustment = 0.0f
         )
     }
 }
